@@ -28,7 +28,11 @@ DEMO_PASSWORD = "manager123"
 
 def get_db_path() -> Path:
     env_path = os.environ.get("QUEUEFLOW_DB_PATH")
-    return Path(env_path) if env_path else DEFAULT_DB_PATH
+    if env_path:
+        return Path(env_path)
+    if os.environ.get("VERCEL"):
+        return Path("/tmp/queueflow.db")
+    return DEFAULT_DB_PATH
 
 
 def utc_now() -> datetime:
