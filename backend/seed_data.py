@@ -31,11 +31,11 @@ def seed_demo_data(conn: Any, force: bool = False) -> None:
             "sla_minutes": 8,
             "next_sequence": 110,
             "tokens": [
-                # 2 SERVED
-                ("OPD-101", "Meera Nair", "+91 98101 11223", "Standard", "Routine follow-up", "SERVED", None, 125, 118, 111, None, "", 7.0),
-                ("OPD-102", "Rohan Kapoor", "+91 98102 22334", "Priority", "Chest discomfort", "SERVED", None, 95, 90, 82, None, "", 5.0),
+                # 2 SERVED (spread across earlier hours for rich 6-hour Analytics AreaChart)
+                ("OPD-101", "Meera Nair", "+91 98101 11223", "Standard", "Routine follow-up", "SERVED", None, 310, 303, 295, None, "", 7.0),
+                ("OPD-102", "Rohan Kapoor", "+91 98102 22334", "Priority", "Chest discomfort", "SERVED", None, 195, 190, 182, None, "", 5.0),
                 # 1 CANCELLED
-                ("OPD-103", "Ananya Verma", "+91 98103 33445", "Standard", "Rescheduled", "CANCELLED", None, 75, None, None, 62, "Patient rescheduled", None),
+                ("OPD-103", "Ananya Verma", "+91 98103 33445", "Standard", "Rescheduled", "CANCELLED", None, 135, None, None, 122, "Patient rescheduled", None),
                 # 1 IN_SERVICE
                 ("OPD-104", "Vikramaditya Rao", "+91 98104 44556", "Priority", "BP monitoring", "IN_SERVICE", None, 32, 24, None, None, "", 8.0),
                 # 5 WAITING
@@ -54,8 +54,8 @@ def seed_demo_data(conn: Any, force: bool = False) -> None:
             "next_sequence": 107,
             "tokens": [
                 # 2 SERVED
-                ("PHM-101", "Deepak Joshi", "+91 98201 11111", "Standard", "Insulin refill", "SERVED", None, 110, 106, 101, None, "", 4.0),
-                ("PHM-102", "Sunita Menon", "+91 98202 22222", "Follow-up", "Post-op meds", "SERVED", None, 65, 60, 55, None, "", 5.0),
+                ("PHM-101", "Deepak Joshi", "+91 98201 11111", "Standard", "Insulin refill", "SERVED", None, 255, 251, 245, None, "", 4.0),
+                ("PHM-102", "Sunita Menon", "+91 98202 22222", "Follow-up", "Post-op meds", "SERVED", None, 145, 140, 135, None, "", 5.0),
                 # 1 IN_SERVICE
                 ("PHM-103", "Karan Patel", "+91 98203 33333", "Priority", "Discharge billing", "IN_SERVICE", None, 18, 13, None, None, "", 5.0),
                 # 3 WAITING
@@ -72,9 +72,9 @@ def seed_demo_data(conn: Any, force: bool = False) -> None:
             "next_sequence": 106,
             "tokens": [
                 # 1 SERVED
-                ("LAB-101", "Rajeshwari Pillai", "+91 98301 12121", "Standard", "Fasting lipid panel", "SERVED", None, 115, 106, 98, None, "", 9.0),
+                ("LAB-101", "Rajeshwari Pillai", "+91 98301 12121", "Standard", "Fasting lipid panel", "SERVED", None, 210, 201, 193, None, "", 9.0),
                 # 1 CANCELLED
-                ("LAB-102", "Nitin Saxena", "+91 98302 23232", "Standard", "", "CANCELLED", None, 70, None, None, 58, "Fasting not completed", None),
+                ("LAB-102", "Nitin Saxena", "+91 98302 23232", "Standard", "", "CANCELLED", None, 85, None, None, 73, "Fasting not completed", None),
                 # 3 WAITING (0 IN_SERVICE)
                 ("LAB-103", "Divya Krishnan", "+91 98303 34343", "Priority", "CBC + Thyroid", "WAITING", 1, 16, None, None, None, "", None),
                 ("LAB-104", "Manish Tiwari", "+91 98304 45454", "Standard", "HbA1c test", "WAITING", 2, 10, None, None, None, "", None),
@@ -177,3 +177,4 @@ def seed_demo_data(conn: Any, force: bool = False) -> None:
                     wait_dur,
                 ),
             )
+
