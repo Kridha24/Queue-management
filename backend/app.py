@@ -72,8 +72,11 @@ def verify_password(password: str, stored: str) -> bool:
     return secrets.compare_digest(actual, expected_digest)
 
 
+_initialized_db_paths: set = set()
+
+
 @contextmanager
-def get_conn():
+def _raw_conn():
     db_path = get_db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path), check_same_thread=False)
@@ -89,8 +92,19 @@ def get_conn():
         conn.close()
 
 
+@contextmanager
+def get_conn():
+    db_path = get_db_path()
+    key = str(db_path)
+    if key not in _initialized_db_paths or not db_path.exists():
+        init_db()
+    with _raw_conn() as conn:
+        yield conn
+
+
 def init_db() -> None:
-    with get_conn() as conn:
+    db_path = get_db_path()
+    with _raw_conn() as conn:
         conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS managers (
@@ -169,6 +183,7 @@ def init_db() -> None:
             )
 
         # Start with an empty database so all queues and tokens come from user input.
+    _initialized_db_paths.add(str(db_path))
 
 
 def seed_demo_data(conn: sqlite3.Connection) -> None:
