@@ -26,6 +26,15 @@ DEMO_EMAIL = "manager@queueflow.io"
 DEMO_PASSWORD = "manager123"
 
 
+def get_database_url() -> Optional[str]:
+    url = os.environ.get("DATABASE_URL", "").strip()
+    if not url:
+        return None
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://") :]
+    return url
+
+
 def get_db_path() -> Path:
     env_path = os.environ.get("QUEUEFLOW_DB_PATH")
     if env_path:
@@ -75,13 +84,79 @@ def verify_password(password: str, stored: str) -> bool:
 _initialized_db_paths: set = set()
 
 
+class _PGCursorWrapper:
+    """Adapter giving psycopg2 RealDictCursor the same interface as sqlite3.Cursor."""
+
+    def __init__(self, cursor, lastrowid: Optional[int] = None):
+        self._cursor = cursor
+        self.lastrowid = lastrowid
+
+    def fetchone(self):
+        return self._cursor.fetchone()
+
+    def fetchall(self):
+        return self._cursor.fetchall()
+
+
+class _PGConnectionWrapper:
+    """Adapter allowing sqlite-style ? placeholders and executescript on PostgreSQL."""
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def execute(self, sql: str, params: tuple = ()):
+        import psycopg2.extras
+
+        pg_sql = sql.replace("?", "%s")
+        stripped = pg_sql.strip().rstrip(";")
+        upper = stripped.upper()
+        needs_returning = (
+            upper.startswith("INSERT INTO MANAGERS ")
+            or upper.startswith("INSERT INTO QUEUES ")
+            or upper.startswith("INSERT INTO TOKENS ")
+        ) and "RETURNING" not in upper
+
+        if needs_returning:
+            pg_sql = f"{stripped} RETURNING id"
+
+        cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(pg_sql, params)
+        lastrowid = None
+        if needs_returning:
+            row = cur.fetchone()
+            if row:
+                lastrowid = row["id"]
+        return _PGCursorWrapper(cur, lastrowid=lastrowid)
+
+    def executescript(self, sql: str) -> None:
+        cur = self._conn.cursor()
+        cur.execute(sql)
+
+    def commit(self) -> None:
+        self._conn.commit()
+
+    def rollback(self) -> None:
+        self._conn.rollback()
+
+    def close(self) -> None:
+        self._conn.close()
+
+
 @contextmanager
 def _raw_conn():
-    db_path = get_db_path()
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
+    pg_url = get_database_url()
+    if pg_url:
+        import psycopg2
+
+        raw = psycopg2.connect(pg_url)
+        conn = _PGConnectionWrapper(raw)
+    else:
+        db_path = get_db_path()
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+
     try:
         yield conn
         conn.commit()
@@ -94,21 +169,31 @@ def _raw_conn():
 
 @contextmanager
 def get_conn():
-    db_path = get_db_path()
-    key = str(db_path)
-    if key not in _initialized_db_paths or not db_path.exists():
-        init_db()
+    pg_url = get_database_url()
+    if pg_url:
+        key = pg_url
+        if key not in _initialized_db_paths:
+            init_db()
+    else:
+        db_path = get_db_path()
+        key = str(db_path)
+        if key not in _initialized_db_paths or not db_path.exists():
+            init_db()
     with _raw_conn() as conn:
         yield conn
 
 
 def init_db() -> None:
+    pg_url = get_database_url()
     db_path = get_db_path()
+    pk_type = "SERIAL PRIMARY KEY" if pg_url else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    real_type = "DOUBLE PRECISION" if pg_url else "REAL"
+
     with _raw_conn() as conn:
         conn.executescript(
-            """
+            f"""
             CREATE TABLE IF NOT EXISTS managers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {pk_type},
                 name TEXT NOT NULL,
                 email TEXT NOT NULL UNIQUE,
                 password_hash TEXT NOT NULL,
@@ -126,7 +211,7 @@ def init_db() -> None:
             );
 
             CREATE TABLE IF NOT EXISTS queues (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {pk_type},
                 name TEXT NOT NULL,
                 prefix TEXT NOT NULL,
                 counter_label TEXT NOT NULL,
@@ -136,7 +221,7 @@ def init_db() -> None:
             );
 
             CREATE TABLE IF NOT EXISTS tokens (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {pk_type},
                 queue_id INTEGER NOT NULL,
                 token_code TEXT NOT NULL,
                 person_name TEXT NOT NULL,
@@ -150,19 +235,23 @@ def init_db() -> None:
                 completed_at TEXT,
                 cancelled_at TEXT,
                 cancel_reason TEXT DEFAULT '',
-                wait_duration_mins REAL,
+                wait_duration_mins {real_type},
                 FOREIGN KEY (queue_id) REFERENCES queues(id) ON DELETE CASCADE
             );
             """
         )
 
-        existing_cols = {
-            row["name"] for row in conn.execute("PRAGMA table_info(managers)").fetchall()
-        }
-        if "google_sub" not in existing_cols:
-            conn.execute("ALTER TABLE managers ADD COLUMN google_sub TEXT DEFAULT ''")
-        if "avatar_url" not in existing_cols:
-            conn.execute("ALTER TABLE managers ADD COLUMN avatar_url TEXT DEFAULT ''")
+        if pg_url:
+            conn.execute("ALTER TABLE managers ADD COLUMN IF NOT EXISTS google_sub TEXT DEFAULT ''")
+            conn.execute("ALTER TABLE managers ADD COLUMN IF NOT EXISTS avatar_url TEXT DEFAULT ''")
+        else:
+            existing_cols = {
+                row["name"] for row in conn.execute("PRAGMA table_info(managers)").fetchall()
+            }
+            if "google_sub" not in existing_cols:
+                conn.execute("ALTER TABLE managers ADD COLUMN google_sub TEXT DEFAULT ''")
+            if "avatar_url" not in existing_cols:
+                conn.execute("ALTER TABLE managers ADD COLUMN avatar_url TEXT DEFAULT ''")
 
         existing_manager = conn.execute(
             "SELECT id FROM managers WHERE email = ?", (DEMO_EMAIL,)
@@ -183,7 +272,7 @@ def init_db() -> None:
             )
 
         # Start with an empty database so all queues and tokens come from user input.
-    _initialized_db_paths.add(str(db_path))
+    _initialized_db_paths.add(pg_url if pg_url else str(db_path))
 
 
 def seed_demo_data(conn: sqlite3.Connection) -> None:
@@ -502,7 +591,10 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health_check() -> Dict[str, str]:
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "database": "postgresql" if get_database_url() else "sqlite",
+    }
 
 
 @app.get("/api/auth/config")
