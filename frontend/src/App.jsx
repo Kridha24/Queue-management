@@ -327,12 +327,15 @@ export default function App() {
 
   const handleConfirmReset = async () => {
     try {
-      await apiRequest("/api/demo/reset", { method: "POST" }, session.token, handleUnauthorized);
+      const data = await apiRequest("/api/demo/reset", { method: "POST" }, session.token, handleUnauthorized);
+      const list = Array.isArray(data) ? data : [];
       setResetModalOpen(false);
-      setActiveQueueId(null);
-      localStorage.removeItem(STORAGE_KEYS.ACTIVE_QUEUE_ID);
-      await loadQueues();
-      showToast("Workspace cleared cleanly.", "info");
+      setQueues(list);
+      const firstId = list.length ? list[0].id : null;
+      setActiveQueueId(firstId);
+      if (firstId) localStorage.setItem(STORAGE_KEYS.ACTIVE_QUEUE_ID, String(firstId));
+      else localStorage.removeItem(STORAGE_KEYS.ACTIVE_QUEUE_ID);
+      showToast("Demo dataset restored with 4 active queues!", "success");
     } catch (err) {
       showToast(err.message, "error");
     }

@@ -278,3 +278,8 @@ def init_db() -> None:
                 ("Dr. A. Mehta", DEMO_EMAIL, _hash_password_raw(DEMO_PASSWORD), "Senior Queue Manager", "local"),
             )
 
+        # Idempotent startup seed: populate 4 realistic queues if queues table is empty
+        from backend.seed_data import seed_demo_data
+
+        seed_demo_data(conn, force=False)
+

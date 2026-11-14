@@ -131,7 +131,11 @@ async def cancel_token(
 
 
 @router.post("/clear-data")
-@router.post("/demo/reset")
 def clear_all_data(manager: Dict[str, Any] = Depends(get_current_manager)) -> List[Dict[str, Any]]:
     return queue_service.clear_all_data()
+
+
+@router.post("/demo/reset")
+def reset_demo_data(manager: Dict[str, Any] = Depends(get_current_manager)) -> List[Dict[str, Any]]:
+    return queue_service.reset_demo_data()
 

@@ -203,12 +203,13 @@ export function ResetDataModal({ isOpen, onClose, onConfirm }) {
           <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center">
             <AlertTriangle className="w-4 h-4" />
           </div>
-          <h3 className="text-base font-bold text-slate-900 dark:text-white">Reset Workspace Data</h3>
+          <h3 className="text-base font-bold text-slate-900 dark:text-white">Reset Demo Data</h3>
         </div>
 
         <div className="p-6 space-y-5">
           <p className="text-sm text-slate-600 dark:text-slate-300">
-            This will clear all queues, waiting tokens, and service history in the database so you can start fresh.
+            This will replace current queues and tokens with the fresh 4-queue demo dataset (OPD, Pharmacy, Lab, and
+            Express Helpdesk).
           </p>
 
           <div className="flex items-center justify-end gap-2.5">
@@ -222,9 +223,9 @@ export function ResetDataModal({ isOpen, onClose, onConfirm }) {
             <button
               type="button"
               onClick={onConfirm}
-              className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold transition-all duration-200 active:scale-[0.98] cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold transition-all duration-200 active:scale-[0.98] cursor-pointer"
             >
-              Yes, Reset All Data
+              Reset Demo Data
             </button>
           </div>
         </div>

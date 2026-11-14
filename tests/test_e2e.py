@@ -68,10 +68,24 @@ def test_authentication_and_demo_seed(client: TestClient):
     assert me.status_code == 200
     assert me.json()["manager"]["email"] == "manager@queueflow.io"
 
-    # Fresh database starts with 0 queues (all data comes from user input)
+    # Startup auto-seed populates 4 realistic queues idempotently
     queues_res = client.get("/api/queues", headers=headers)
     assert queues_res.status_code == 200
-    assert queues_res.json() == []
+    queues = queues_res.json()
+    assert [q["prefix"] for q in queues] == ["OPD", "PHM", "LAB", "EXP"]
+    assert queues[0]["waiting_count"] == 5
+    assert queues[0]["in_service_token"] is not None
+
+    # Repeated init_db() is idempotent (no duplicate queues)
+    from backend.core.database import init_db
+
+    init_db()
+    assert len(client.get("/api/queues", headers=headers).json()) == 4
+
+    # POST /api/demo/reset restores the 4-queue seed dataset
+    reset_res = client.post("/api/demo/reset", headers=headers)
+    assert reset_res.status_code == 200
+    assert [q["prefix"] for q in reset_res.json()] == ["OPD", "PHM", "LAB", "EXP"]
 
 
 def test_full_queue_lifecycle_and_analytics(client: TestClient):

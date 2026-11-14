@@ -363,3 +363,14 @@ def clear_all_data() -> List[Dict[str, Any]]:
         queue_repo.clear_all_queues_and_tokens(conn)
         invalidate_analytics_cache()
         return []
+
+
+def reset_demo_data() -> List[Dict[str, Any]]:
+    """Clear existing queues/tokens and reload the 4-queue demo seed dataset atomically."""
+    from backend.seed_data import seed_demo_data
+
+    with get_conn() as conn:
+        seed_demo_data(conn, force=True)
+        invalidate_analytics_cache()
+        rows = queue_repo.list_queues(conn)
+        return [serialize_queue(conn, q) for q in rows]

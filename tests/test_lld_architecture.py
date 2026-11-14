@@ -98,7 +98,8 @@ def test_strict_token_state_machine_and_structured_error(lld_client: TestClient)
 
 def test_zero_division_analytics_edge_cases(lld_client: TestClient):
     headers = _auth_headers(lld_client)
-    # No queues and no tokens at all
+    # Clear seeded data to verify zero-division guard on completely empty DB
+    lld_client.post("/api/clear-data", headers=headers)
     empty_ana = lld_client.get("/api/analytics", headers=headers)
     assert empty_ana.status_code == 200
     kpis = empty_ana.json()["kpis"]
