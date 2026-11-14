@@ -1,8 +1,22 @@
 import React from "react";
-import { Clock, Users, CheckCircle2, Activity } from "lucide-react";
+import { Clock, Users, CheckCircle2, Command } from "lucide-react";
 import { getTimeOfDayGreeting } from "../utils/api";
 
-export default function GreetingHeader({ session, settings, queues, theme }) {
+function MiniSparkline({ color = "#10B981", points = "0,14 8,10 16,12 24,6 32,9 40,3" }) {
+  return (
+    <svg className="w-9 h-4 shrink-0" viewBox="0 0 42 18" fill="none">
+      <polyline
+        points={points}
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export default function GreetingHeader({ session, settings, queues, theme, onOpenCommandPalette }) {
   const managerName = (settings.greetingName || "").trim() || session?.manager?.name || "Manager";
   const greeting = getTimeOfDayGreeting();
 
@@ -51,38 +65,53 @@ export default function GreetingHeader({ session, settings, queues, theme }) {
           </p>
         </div>
 
-        {/* 3 Compact KPI Pills */}
+        {/* 3 Compact KPI Pills with Mini Sparklines + Cmd+K Trigger */}
         <div className="flex items-center gap-2.5 flex-wrap">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
             <Users className="w-4 h-4 text-amber-500" />
             <div className="text-xs">
               <span className="text-slate-500 dark:text-slate-400 mr-1">Waiting</span>
-              <span className="font-mono-code font-bold text-slate-900 dark:text-white">{totalWaiting}</span>
+              <span className="font-mono-code tabular-nums font-bold text-slate-900 dark:text-white">
+                {totalWaiting}
+              </span>
             </div>
+            <MiniSparkline color="#F59E0B" points="0,12 8,14 16,8 24,10 32,5 40,7" />
           </div>
 
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
             <CheckCircle2 className="w-4 h-4 text-emerald-500" />
             <div className="text-xs">
               <span className="text-slate-500 dark:text-slate-400 mr-1">Served</span>
-              <span className="font-mono-code font-bold text-slate-900 dark:text-white">{totalServed}</span>
+              <span className="font-mono-code tabular-nums font-bold text-slate-900 dark:text-white">
+                {totalServed}
+              </span>
             </div>
+            <MiniSparkline color="#10B981" points="0,15 8,12 16,10 24,7 32,5 40,2" />
           </div>
 
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
             <Clock className="w-4 h-4 text-indigo-500" />
             <div className="text-xs">
               <span className="text-slate-500 dark:text-slate-400 mr-1">Avg Wait</span>
-              <span className="font-mono-code font-bold text-slate-900 dark:text-white">{avgWait}m</span>
+              <span className="font-mono-code tabular-nums font-bold text-slate-900 dark:text-white">
+                {avgWait}m
+              </span>
             </div>
+            <MiniSparkline color="#6366F1" points="0,10 8,7 16,11 24,6 32,8 40,5" />
           </div>
 
-          <div className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
-            <Activity className="w-3.5 h-3.5" />
-            Live Sync
-          </div>
+          <button
+            type="button"
+            onClick={onOpenCommandPalette}
+            title="Open Command Palette (Cmd+K / Ctrl+K)"
+            className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-[11px] font-semibold text-slate-600 dark:text-slate-300 transition cursor-pointer"
+          >
+            <Command className="w-3.5 h-3.5" />
+            <span className="font-mono-code">Cmd+K</span>
+          </button>
         </div>
       </div>
     </header>
   );
 }
+

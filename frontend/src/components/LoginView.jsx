@@ -168,3 +168,4 @@ export default function LoginView({ onLogin, onGoogleToken, theme }) {
     </div>
   );
 }
+

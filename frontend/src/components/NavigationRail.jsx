@@ -1,5 +1,5 @@
 import React from "react";
-import { LayoutGrid, BarChart3, Settings, RotateCcw, LogOut, Layers } from "lucide-react";
+import { LayoutGrid, BarChart3, Tv, Settings, RotateCcw, LogOut, Layers } from "lucide-react";
 
 export default function NavigationRail({
   activeTab,
@@ -11,6 +11,7 @@ export default function NavigationRail({
   const navItems = [
     { id: "operations", label: "Workspace", icon: LayoutGrid },
     { id: "analytics", label: "Analytics", icon: BarChart3 },
+    { id: "tv", label: "TV Display", icon: Tv },
     { id: "settings", label: "Settings", icon: Settings },
   ];
 
@@ -83,3 +84,4 @@ export default function NavigationRail({
     </aside>
   );
 }
+

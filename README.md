@@ -1,6 +1,16 @@
 # QueueFlow Pro — Command Center
 
-Production-grade Full-Stack Queue Management Application built with **React (Vite) + Tailwind CSS + Lucide Icons + Recharts** on the frontend and a **4-layer HLD/LLD FastAPI** backend supporting **PostgreSQL (`DATABASE_URL`)** and **SQLite** (with automatic `/tmp/queueflow.db` fallback on Vercel).
+Production-grade Full-Stack Queue Management Application built with **React (Vite) + Tailwind CSS + Framer Motion + Lucide Icons + Recharts** on the frontend and a **4-layer HLD/LLD FastAPI** backend supporting **PostgreSQL (`DATABASE_URL`)** and **SQLite** (with automatic `/tmp/queueflow.db` fallback on Vercel).
+
+- **Live App (Render)**: https://queueflow-pro-urex.onrender.com
+- **Interactive Swagger / OpenAPI Docs**: https://queueflow-pro-urex.onrender.com/docs (local: `http://127.0.0.1:8000/docs`)
+- **Demo Credentials**: `manager@queueflow.io` / `manager123` (or click **Instant Demo Login**)
+
+### Stand-Out Differentiators
+- **Public TV / Waiting-Room Display Mode**: Distraction-free full-screen board with Now Serving hero, Next 3 upcoming tokens, and live digital clock.
+- **Cmd+K / Ctrl+K Command Palette & Keyboard Shortcuts**: `Space` / `Ctrl+Enter` to Assign Top Token (#1), `N` to focus the New Token input, `Esc` to exit modals/TV Mode.
+- **CSV Report Export**: Downloadable `.csv` analytics report directly from the Analytics Dashboard.
+- **60fps UI Craft**: Framer Motion layout animations on token reordering, live SLA progress bars (`Teal -> Amber -> Rose`), `tabular-nums` wait timers, shimmer skeleton loaders, and dedicated full-page **Settings & Theme Switcher**.
 
 ---
 

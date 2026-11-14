@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { THEME_PRESETS, DEFAULT_SETTINGS } from "./utils/theme";
 import { STORAGE_KEYS, apiRequest, playDispatchChime } from "./utils/api";
 import LoginView from "./components/LoginView";
@@ -7,6 +7,8 @@ import GreetingHeader from "./components/GreetingHeader";
 import WorkspaceView from "./components/WorkspaceView";
 import AnalyticsView from "./components/AnalyticsView";
 import SettingsView from "./components/SettingsView";
+import TvDisplayView from "./components/TvDisplayView";
+import CommandPalette from "./components/CommandPalette";
 import {
   QueueModal,
   CancelTokenModal,
@@ -38,7 +40,10 @@ export default function App() {
     const saved = localStorage.getItem(STORAGE_KEYS.ACTIVE_QUEUE_ID);
     return saved ? Number(saved) : null;
   });
-  const [activeTab, setActiveTab] = useState("operations"); // 'operations' | 'analytics' | 'settings'
+  const [activeTab, setActiveTab] = useState("operations"); // 'operations' | 'analytics' | 'tv' | 'settings'
+  const [isLoadingQueues, setIsLoadingQueues] = useState(true);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const personNameInputRef = useRef(null);
   const [queueModalOpen, setQueueModalOpen] = useState(false);
   const [queueToEdit, setQueueToEdit] = useState(null);
   const [cancelTarget, setCancelTarget] = useState(null);
@@ -107,6 +112,8 @@ export default function App() {
       });
     } catch (err) {
       showToast(err.message, "error");
+    } finally {
+      setIsLoadingQueues(false);
     }
   }, [session?.token, handleUnauthorized, showToast]);
 
@@ -282,6 +289,78 @@ export default function App() {
 
   const activeQueue = queues.find((q) => q.id === activeQueueId) || queues[0] || null;
 
+  // Keyboard Shortcuts: Cmd+K / Ctrl+K (Command Palette), Space / Ctrl+Enter (Assign Top), N (Focus New Token), Esc
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCommandPaletteOpen((open) => !open);
+        return;
+      }
+
+      if (e.key === "Escape") {
+        if (commandPaletteOpen) {
+          setCommandPaletteOpen(false);
+          return;
+        }
+        if (activeTab === "tv") {
+          setActiveTab("operations");
+          return;
+        }
+      }
+
+      const tag = document.activeElement?.tagName?.toLowerCase();
+      const isTyping = tag === "input" || tag === "textarea" || tag === "select";
+      if (isTyping || commandPaletteOpen || queueModalOpen || cancelTarget || resetModalOpen) return;
+
+      if (activeTab === "operations" && activeQueue) {
+        if ((e.key === " " || (e.ctrlKey && e.key === "Enter")) && (activeQueue.waiting_tokens || []).length > 0) {
+          e.preventDefault();
+          handleAssignTop(activeQueue.id);
+        } else if (e.key.toLowerCase() === "n") {
+          e.preventDefault();
+          personNameInputRef.current?.focus();
+        }
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activeTab, activeQueue, commandPaletteOpen, queueModalOpen, cancelTarget, resetModalOpen]);
+
+  if (activeTab === "tv") {
+    return (
+      <>
+        <TvDisplayView
+          queues={queues}
+          activeQueue={activeQueue}
+          onSelectQueue={(id) => {
+            setActiveQueueId(id);
+            localStorage.setItem(STORAGE_KEYS.ACTIVE_QUEUE_ID, String(id));
+          }}
+          onExit={() => setActiveTab("operations")}
+          theme={theme}
+        />
+        <CommandPalette
+          isOpen={commandPaletteOpen}
+          onClose={() => setCommandPaletteOpen(false)}
+          queues={queues}
+          onSelectQueue={(id) => {
+            setActiveQueueId(id);
+            localStorage.setItem(STORAGE_KEYS.ACTIVE_QUEUE_ID, String(id));
+          }}
+          onSelectTab={setActiveTab}
+          onToggleThemeMode={() =>
+            updateSettings({ ...settings, colorMode: settings.colorMode === "dark" ? "light" : "dark" })
+          }
+          colorMode={settings.colorMode}
+          onAssignTop={handleAssignTop}
+          activeQueue={activeQueue}
+        />
+        <ToastContainer toasts={toasts} />
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-[#F4F5F7] dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
       {/* Left Vertical Dark-Rail Navigation */}
@@ -295,13 +374,21 @@ export default function App() {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
-        <GreetingHeader session={session} settings={settings} queues={queues} theme={theme} />
+        <GreetingHeader
+          session={session}
+          settings={settings}
+          queues={queues}
+          theme={theme}
+          onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+        />
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1440px] w-full mx-auto">
           {activeTab === "operations" && (
             <WorkspaceView
               queues={queues}
               activeQueue={activeQueue}
+              isLoading={isLoadingQueues}
+              personNameInputRef={personNameInputRef}
               onSelectQueue={(id) => {
                 setActiveQueueId(id);
                 localStorage.setItem(STORAGE_KEYS.ACTIVE_QUEUE_ID, String(id));
@@ -331,6 +418,7 @@ export default function App() {
               token={session.token}
               onUnauthorized={handleUnauthorized}
               theme={theme}
+              onShowToast={showToast}
             />
           )}
 
@@ -371,6 +459,23 @@ export default function App() {
         isOpen={resetModalOpen}
         onClose={() => setResetModalOpen(false)}
         onConfirm={handleConfirmReset}
+      />
+
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        queues={queues}
+        onSelectQueue={(id) => {
+          setActiveQueueId(id);
+          localStorage.setItem(STORAGE_KEYS.ACTIVE_QUEUE_ID, String(id));
+        }}
+        onSelectTab={setActiveTab}
+        onToggleThemeMode={() =>
+          updateSettings({ ...settings, colorMode: settings.colorMode === "dark" ? "light" : "dark" })
+        }
+        colorMode={settings.colorMode}
+        onAssignTop={handleAssignTop}
+        activeQueue={activeQueue}
       />
 
       <ToastContainer toasts={toasts} />

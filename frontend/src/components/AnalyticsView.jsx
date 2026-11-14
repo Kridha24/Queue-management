@@ -14,13 +14,55 @@ import {
   Tooltip,
   Legend,
 } from "recharts";
-import { Clock, Users, CheckCircle2, XCircle, Filter } from "lucide-react";
+import { Clock, Users, CheckCircle2, XCircle, Filter, Download } from "lucide-react";
 import { apiRequest } from "../utils/api";
 
-export default function AnalyticsView({ queues, token, onUnauthorized, theme }) {
+export default function AnalyticsView({ queues, token, onUnauthorized, theme, onShowToast }) {
   const [scope, setScope] = useState("all");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const handleExportCsv = () => {
+    const targetQueues = scope === "all" ? queues : queues.filter((q) => String(q.id) === scope);
+    const rows = [
+      ["Queue", "Prefix", "Token Code", "Person Name", "Priority", "Status", "Wait Mins", "Created At", "Cancel Reason"],
+    ];
+
+    targetQueues.forEach((q) => {
+      const allTokens = [
+        ...(q.in_service_token ? [q.in_service_token] : []),
+        ...(q.waiting_tokens || []),
+        ...(q.history_tokens || []),
+      ];
+      allTokens.forEach((t) => {
+        rows.push([
+          q.name,
+          q.prefix,
+          t.token_code,
+          t.person_name,
+          t.priority,
+          t.status,
+          t.wait_duration_mins != null ? Number(t.wait_duration_mins).toFixed(1) : "0.0",
+          t.created_at || "",
+          t.cancel_reason || "",
+        ]);
+      });
+    });
+
+    const csvContent = rows
+      .map((r) => r.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `queueflow-analytics-${scope}-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    if (onShowToast) onShowToast("CSV report exported!", "success");
+  };
 
   useEffect(() => {
     let active = true;
@@ -76,7 +118,7 @@ export default function AnalyticsView({ queues, token, onUnauthorized, theme }) 
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5 flex-wrap">
           <Filter className="w-4 h-4 text-slate-400" />
           <select
             value={scope}
@@ -90,6 +132,15 @@ export default function AnalyticsView({ queues, token, onUnauthorized, theme }) 
               </option>
             ))}
           </select>
+
+          <button
+            type="button"
+            onClick={handleExportCsv}
+            className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-white text-xs font-semibold shadow-xs transition active:scale-[0.98] cursor-pointer ${theme.primaryBg}`}
+          >
+            <Download className="w-3.5 h-3.5" />
+            Export CSV
+          </button>
         </div>
       </div>
 
@@ -348,3 +399,4 @@ export default function AnalyticsView({ queues, token, onUnauthorized, theme }) 
     </div>
   );
 }
+
