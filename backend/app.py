@@ -2,20 +2,24 @@
 
 from __future__ import annotations
 
-import hashlib
-import os
-import secrets
-import sqlite3
+import base64
 from collections import defaultdict
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timedelta, timezone
+import hashlib
+import json
+import os
 from pathlib import Path
+import secrets
+import socket
+import sqlite3
 import time
 from typing import Any, Dict, List, Literal, Optional
 
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 import httpx
 from pydantic import BaseModel, Field
@@ -473,27 +477,160 @@ class TokenCancelRequest(BaseModel):
 SESSION_TTL_HOURS = 24
 AUTH_RATE_LIMIT_MAX = 15
 AUTH_RATE_LIMIT_WINDOW_SECS = 60
-_auth_attempts: Dict[str, List[float]] = defaultdict(list)
+GLOBAL_RATE_LIMIT_MAX = 120
+GLOBAL_RATE_LIMIT_WINDOW_SECS = 60
+INSTANCE_ID = os.environ.get("INSTANCE_ID") or os.environ.get("HOSTNAME") or socket.gethostname()
+
+_memory_rate_buckets: Dict[str, List[float]] = defaultdict(list)
+_redis_client = None
+_redis_init_attempted = False
+_AES_PREFIX = "enc:v1:"
+
+
+def _get_aes_key() -> bytes:
+    secret = os.environ.get("AES_ENCRYPTION_KEY", "").strip() or "queueflow-pro-dev-aes-256-key"
+    return hashlib.sha256(secret.encode("utf-8")).digest()
+
+
+def encrypt_field(plaintext: Optional[str]) -> str:
+    """Encrypt sensitive text at rest using AES-256-GCM."""
+    val = (plaintext or "").strip()
+    if not val:
+        return ""
+    if val.startswith(_AES_PREFIX):
+        return val
+    aesgcm = AESGCM(_get_aes_key())
+    nonce = secrets.token_bytes(12)
+    ct = aesgcm.encrypt(nonce, val.encode("utf-8"), None)
+    return _AES_PREFIX + base64.b64encode(nonce + ct).decode("ascii")
+
+
+def decrypt_field(stored: Optional[str]) -> str:
+    """Decrypt AES-256-GCM encrypted fields, falling back to plaintext for legacy rows."""
+    val = stored or ""
+    if not val or not val.startswith(_AES_PREFIX):
+        return val
+    try:
+        raw = base64.b64decode(val[len(_AES_PREFIX) :])
+        nonce, ct = raw[:12], raw[12:]
+        aesgcm = AESGCM(_get_aes_key())
+        return aesgcm.decrypt(nonce, ct, None).decode("utf-8")
+    except Exception:
+        return ""
+
+
+def get_redis_client():
+    global _redis_client, _redis_init_attempted
+    redis_url = os.environ.get("REDIS_URL", "").strip()
+    if not redis_url:
+        return None
+    if _redis_init_attempted:
+        return _redis_client
+    _redis_init_attempted = True
+    try:
+        import redis
+
+        client = redis.Redis.from_url(
+            redis_url,
+            decode_responses=True,
+            socket_connect_timeout=1.5,
+            socket_timeout=1.5,
+        )
+        client.ping()
+        _redis_client = client
+    except Exception:
+        _redis_client = None
+    return _redis_client
+
+
+def cache_get_json(key: str) -> Optional[Any]:
+    r = get_redis_client()
+    if not r:
+        return None
+    try:
+        raw = r.get(key)
+        return json.loads(raw) if raw else None
+    except Exception:
+        return None
+
+
+def cache_set_json(key: str, value: Any, ttl_secs: int = 15) -> None:
+    r = get_redis_client()
+    if not r:
+        return
+    try:
+        r.setex(key, ttl_secs, json.dumps(value))
+    except Exception:
+        pass
+
+
+def invalidate_analytics_cache() -> None:
+    r = get_redis_client()
+    if not r:
+        return
+    try:
+        keys = r.keys("queueflow:analytics:*")
+        if keys:
+            r.delete(*keys)
+    except Exception:
+        pass
+
+
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def enforce_rate_limit(
+    request: Request,
+    bucket: str,
+    max_requests: int,
+    window_secs: int,
+) -> int:
+    """Distributed Redis rate limiter with automatic in-memory fallback. Returns remaining quota."""
+    ip = _client_ip(request)
+    r = get_redis_client()
+    if r:
+        try:
+            key = f"queueflow:rl:{bucket}:{ip}"
+            count = int(r.incr(key))
+            if count == 1:
+                r.expire(key, window_secs)
+            if count > max_requests:
+                ttl = r.ttl(key)
+                retry_after = str(max(1, int(ttl) if ttl and ttl > 0 else window_secs))
+                raise HTTPException(
+                    status_code=429,
+                    detail="Rate limit exceeded. Please slow down and try again shortly.",
+                    headers={"Retry-After": retry_after},
+                )
+            return max(0, max_requests - count)
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+
+    now = time.monotonic()
+    cutoff = now - window_secs
+    mem_key = f"{bucket}:{ip}"
+    recent = [ts for ts in _memory_rate_buckets[mem_key] if ts > cutoff]
+    if len(recent) >= max_requests:
+        _memory_rate_buckets[mem_key] = recent
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded. Please slow down and try again shortly.",
+            headers={"Retry-After": str(window_secs)},
+        )
+    recent.append(now)
+    _memory_rate_buckets[mem_key] = recent
+    return max(0, max_requests - len(recent))
 
 
 def check_auth_rate_limit(request: Request) -> None:
-    """Sliding-window rate limiter on authentication endpoints."""
-    forwarded = request.headers.get("x-forwarded-for", "")
-    client_ip = forwarded.split(",")[0].strip() if forwarded else (
-        request.client.host if request.client else "unknown"
-    )
-    now = time.monotonic()
-    cutoff = now - AUTH_RATE_LIMIT_WINDOW_SECS
-    recent = [ts for ts in _auth_attempts[client_ip] if ts > cutoff]
-    if len(recent) >= AUTH_RATE_LIMIT_MAX:
-        _auth_attempts[client_ip] = recent
-        raise HTTPException(
-            status_code=429,
-            detail="Too many authentication attempts. Please wait a minute and try again.",
-            headers={"Retry-After": str(AUTH_RATE_LIMIT_WINDOW_SECS)},
-        )
-    recent.append(now)
-    _auth_attempts[client_ip] = recent
+    """Rate limiter on authentication endpoints."""
+    enforce_rate_limit(request, "auth", AUTH_RATE_LIMIT_MAX, AUTH_RATE_LIMIT_WINDOW_SECS)
 
 
 def create_session(conn, manager_id: int) -> str:
@@ -554,9 +691,9 @@ def serialize_token(row: sqlite3.Row) -> Dict[str, Any]:
         "queue_id": row["queue_id"],
         "token_code": row["token_code"],
         "person_name": row["person_name"],
-        "phone": row["phone"] or "",
+        "phone": decrypt_field(row["phone"]),
         "priority": row["priority"],
-        "notes": row["notes"] or "",
+        "notes": decrypt_field(row["notes"]),
         "status": row["status"],
         "position": row["position"],
         "created_at": row["created_at"],
@@ -655,12 +792,29 @@ app.add_middleware(
 
 
 @app.middleware("http")
-async def add_security_headers(request: Request, call_next):
+async def add_security_and_rate_limit_headers(request: Request, call_next):
+    remaining_quota: Optional[int] = None
+    if request.url.path.startswith("/api/") and request.url.path != "/api/health":
+        try:
+            remaining_quota = enforce_rate_limit(
+                request, "global", GLOBAL_RATE_LIMIT_MAX, GLOBAL_RATE_LIMIT_WINDOW_SECS
+            )
+        except HTTPException as exc:
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.detail},
+                headers=exc.headers or {},
+            )
+
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["X-Instance-ID"] = INSTANCE_ID
+    if remaining_quota is not None:
+        response.headers["X-RateLimit-Limit"] = str(GLOBAL_RATE_LIMIT_MAX)
+        response.headers["X-RateLimit-Remaining"] = str(remaining_quota)
     if request.headers.get("x-forwarded-proto") == "https" or request.url.scheme == "https":
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
@@ -668,9 +822,13 @@ async def add_security_headers(request: Request, call_next):
 
 @app.get("/api/health")
 def health_check() -> Dict[str, str]:
+    r = get_redis_client()
     return {
         "status": "ok",
         "database": "postgresql" if get_database_url() else "sqlite",
+        "redis": "connected" if r else "in-memory-fallback",
+        "encryption": "aes-256-gcm",
+        "instance_id": INSTANCE_ID,
     }
 
 
@@ -888,6 +1046,7 @@ def update_queue(
             (name, prefix, counter_label, sla_minutes, queue_id),
         )
         updated = conn.execute("SELECT * FROM queues WHERE id = ?", (queue_id,)).fetchone()
+        invalidate_analytics_cache()
         return serialize_queue(conn, updated)
 
 
@@ -927,9 +1086,9 @@ def create_token(
                 queue_id,
                 token_code,
                 person_name,
-                (payload.phone or "").strip(),
+                encrypt_field(payload.phone),
                 payload.priority,
-                (payload.notes or "").strip(),
+                encrypt_field(payload.notes),
                 next_pos,
                 iso_utc(),
             ),
@@ -939,6 +1098,7 @@ def create_token(
             (seq + 1, queue_id),
         )
         t_row = conn.execute("SELECT * FROM tokens WHERE id = ?", (cur.lastrowid,)).fetchone()
+        invalidate_analytics_cache()
         return serialize_token(t_row)
 
 
@@ -982,6 +1142,7 @@ def move_token(
             conn.execute("UPDATE tokens SET position = ? WHERE id = ?", (new_pos, t_id))
 
         updated_queue = conn.execute("SELECT * FROM queues WHERE id = ?", (queue_id,)).fetchone()
+        invalidate_analytics_cache()
         return serialize_queue(conn, updated_queue)
 
 
@@ -1034,6 +1195,7 @@ def assign_top_token(
 
         reindex_waiting_tokens(conn, queue_id)
         updated_queue = conn.execute("SELECT * FROM queues WHERE id = ?", (queue_id,)).fetchone()
+        invalidate_analytics_cache()
         return serialize_queue(conn, updated_queue)
 
 
@@ -1067,6 +1229,7 @@ def complete_service(
             (iso_utc(), active_row["id"]),
         )
         updated_queue = conn.execute("SELECT * FROM queues WHERE id = ?", (queue_id,)).fetchone()
+        invalidate_analytics_cache()
         return serialize_queue(conn, updated_queue)
 
 
@@ -1111,6 +1274,7 @@ async def cancel_token(
         )
         reindex_waiting_tokens(conn, queue_id)
         updated_queue = conn.execute("SELECT * FROM queues WHERE id = ?", (queue_id,)).fetchone()
+        invalidate_analytics_cache()
         return serialize_queue(conn, updated_queue)
 
 
@@ -1119,6 +1283,11 @@ def get_analytics(
     queue_id: Optional[str] = Query(default="all"),
     manager: Dict[str, Any] = Depends(get_current_manager),
 ) -> Dict[str, Any]:
+    cache_key = f"queueflow:analytics:{queue_id or 'all'}"
+    cached = cache_get_json(cache_key)
+    if cached is not None:
+        return cached
+
     with get_conn() as conn:
         all_queues = conn.execute("SELECT * FROM queues ORDER BY id ASC").fetchall()
         all_tokens = conn.execute("SELECT * FROM tokens").fetchall()
@@ -1268,7 +1437,7 @@ def get_analytics(
                 }
             )
 
-    return {
+    result = {
         "kpis": {
             "mean_wait_mins": mean_wait,
             "peak_wait_mins": peak_wait,
@@ -1291,6 +1460,8 @@ def get_analytics(
         },
         "queue_breakdown": queue_breakdown,
     }
+    cache_set_json(cache_key, result, ttl_secs=15)
+    return result
 
 
 @app.post("/api/clear-data")
@@ -1298,6 +1469,7 @@ def clear_all_data(manager: Dict[str, Any] = Depends(get_current_manager)) -> Li
     with get_conn() as conn:
         conn.execute("DELETE FROM tokens;")
         conn.execute("DELETE FROM queues;")
+        invalidate_analytics_cache()
         return []
 
 
@@ -1305,6 +1477,7 @@ def clear_all_data(manager: Dict[str, Any] = Depends(get_current_manager)) -> Li
 def reset_demo(manager: Dict[str, Any] = Depends(get_current_manager)) -> List[Dict[str, Any]]:
     with get_conn() as conn:
         seed_demo_data(conn)
+        invalidate_analytics_cache()
         q_rows = conn.execute("SELECT * FROM queues ORDER BY id ASC").fetchall()
         return [serialize_queue(conn, q) for q in q_rows]
 

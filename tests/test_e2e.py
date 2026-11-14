@@ -18,9 +18,9 @@ def client(tmp_path):
     db_file = tmp_path / "test_queueflow.db"
     os.environ["QUEUEFLOW_DB_PATH"] = str(db_file)
 
-    from backend.app import _auth_attempts, app, init_db
+    from backend.app import _memory_rate_buckets, app, init_db
 
-    _auth_attempts.clear()
+    _memory_rate_buckets.clear()
     init_db()
     with TestClient(app) as test_client:
         yield test_client
@@ -283,13 +283,54 @@ def test_security_headers_and_rate_limiting(client: TestClient):
     assert res.headers.get("X-Content-Type-Options") == "nosniff"
     assert res.headers.get("X-Frame-Options") == "DENY"
     assert res.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
+    assert res.headers.get("X-Instance-ID")
+    health_data = res.json()
+    assert health_data["encryption"] == "aes-256-gcm"
+    assert "redis" in health_data
 
     # Trigger rate limit (15 allowed, 16th returns 429)
     for _ in range(15):
         r = client.post("/api/auth/login", json={"email": "manager@queueflow.io", "password": "wrong"})
         assert r.status_code == 401
+        assert r.headers.get("X-RateLimit-Limit") == "120"
     limited = client.post("/api/auth/login", json={"email": "manager@queueflow.io", "password": "wrong"})
     assert limited.status_code == 429
+
+
+def test_aes_encryption_at_rest(client: TestClient):
+    import sqlite3
+
+    headers = get_auth_headers(client)
+    q = client.post(
+        "/api/queues",
+        headers=headers,
+        json={"name": "Secure Desk", "prefix": "SEC", "counter_label": "Booth 1", "sla_minutes": 10},
+    ).json()
+
+    created = client.post(
+        f"/api/queues/{q['id']}/tokens",
+        headers=headers,
+        json={
+            "person_name": "Riya Sen",
+            "phone": "+91 99999 88888",
+            "priority": "Priority",
+            "notes": "Confidential medical history",
+        },
+    ).json()
+
+    # API returns decrypted values
+    assert created["phone"] == "+91 99999 88888"
+    assert created["notes"] == "Confidential medical history"
+
+    # Database stores AES-256-GCM ciphertext (enc:v1:...)
+    conn = sqlite3.connect(os.environ["QUEUEFLOW_DB_PATH"])
+    row = conn.execute("SELECT phone, notes FROM tokens WHERE id = ?", (created["id"],)).fetchone()
+    conn.close()
+    assert row[0].startswith("enc:v1:")
+    assert "99999" not in row[0]
+    assert row[1].startswith("enc:v1:")
+    assert "Confidential" not in row[1]
+
 
 
 
