@@ -7,11 +7,20 @@
     AUTH: "queueflow_auth_session_v1",
     LOCAL_DB: "queueflow_local_db_v1",
     ACTIVE_QUEUE_ID: "queueflow_active_queue_v1",
+    SETTINGS: "queueflow_counter_settings_v1",
   };
 
   const DEMO_CREDENTIALS = {
     email: "manager@queueflow.io",
     password: "manager123",
+  };
+
+  const DEFAULT_SETTINGS = {
+    displayName: "",
+    greetingMessage: "Desk is live & ready for service",
+    defaultPrefix: "OPD",
+    defaultSla: 10,
+    soundEnabled: true,
   };
 
   // Application State
@@ -24,6 +33,7 @@
     searchQuery: "",
     analyticsScope: "all",
     cancelTarget: null, // { queueId, tokenId, tokenCode, personName }
+    settings: { ...DEFAULT_SETTINGS },
     busy: false,
     charts: {
       hourly: null,
@@ -950,6 +960,7 @@
       await loadQueues();
       const activeQ = getActiveQueue();
       const code = activeQ?.in_service_token?.token_code || "Top token";
+      playDispatchChime();
       showToast(`${code} assigned to service.`, "success");
     } catch (err) {
       showToast(err.message, "error");
@@ -1042,46 +1053,75 @@
   // Rendering — Queue Operations
   // ---------------------------------------------------------------------------
 
-  function renderGlobalKpiStrip() {
-    const activeQueues = state.queues.length;
-    let totalWaiting = 0;
-    let totalInService = 0;
-    let totalServed = 0;
-    const waits = [];
-    const nowMs = Date.now();
-
-    for (const q of state.queues) {
-      const waiting = q.waiting_tokens || [];
-      totalWaiting += waiting.length;
-      if (q.in_service_token) {
-        totalInService += 1;
-        if (q.in_service_token.wait_duration_mins !== null && q.in_service_token.wait_duration_mins !== undefined) {
-          waits.push(Number(q.in_service_token.wait_duration_mins));
-        }
+  function loadSettings() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        state.settings = { ...DEFAULT_SETTINGS, ...parsed };
+      } else {
+        state.settings = { ...DEFAULT_SETTINGS };
       }
-      for (const t of waiting) {
-        if (t.created_at) {
-          waits.push(Math.max(0, (nowMs - new Date(t.created_at).getTime()) / 60000));
-        }
-      }
-      for (const t of q.history_tokens || []) {
-        if (t.status === "SERVED") totalServed += 1;
-        if (t.wait_duration_mins !== null && t.wait_duration_mins !== undefined) {
-          waits.push(Number(t.wait_duration_mins));
-        }
-      }
+    } catch {
+      state.settings = { ...DEFAULT_SETTINGS };
     }
+  }
 
-    const meanWait = waits.length ? (waits.reduce((a, b) => a + b, 0) / waits.length).toFixed(1) : "0.0";
-    document.getElementById("strip-active-queues").textContent = String(activeQueues);
-    document.getElementById("strip-total-waiting").textContent = String(totalWaiting);
-    document.getElementById("strip-service-served").textContent = `${totalInService} / ${totalServed}`;
-    document.getElementById("strip-mean-wait").textContent = `${meanWait}m`;
+  function saveSettings(newSettings) {
+    state.settings = { ...DEFAULT_SETTINGS, ...newSettings };
+    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(state.settings));
+  }
+
+  function playDispatchChime() {
+    if (!state.settings.soundEnabled) return;
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(587.33, now);
+      osc.frequency.exponentialRampToValueAtTime(880, now + 0.12);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.exponentialRampToValueAtTime(0.12, now + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.35);
+    } catch {
+      // Audio playback blocked or unsupported
+    }
+  }
+
+  function getTimeOfDayGreeting() {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good Morning";
+    if (hour < 17) return "Good Afternoon";
+    return "Good Evening";
+  }
+
+  function renderGreetingHeader() {
+    const titleEl = document.getElementById("greeting-title");
+    const subtitleEl = document.getElementById("greeting-subtitle");
+    if (!titleEl || !subtitleEl) return;
+
+    const customName = (state.settings.displayName || "").trim();
+    const mgrName = customName || state.session?.manager?.name || "Manager";
+    titleEl.textContent = `${getTimeOfDayGreeting()}, ${mgrName}`;
+
+    const customMsg = (state.settings.greetingMessage || "").trim() || DEFAULT_SETTINGS.greetingMessage;
+    const totalWaiting = state.queues.reduce((acc, q) => acc + (q.waiting_tokens || []).length, 0);
+    const activeQ = getActiveQueue();
+    const counterPart = activeQ ? `${activeQ.counter_label} • ` : "";
+    subtitleEl.textContent = `${customMsg} — ${counterPart}${state.queues.length} queue${state.queues.length === 1 ? "" : "s"}, ${totalWaiting} waiting`;
   }
 
   function renderAll() {
-    renderGlobalKpiStrip();
-    renderSidebar();
+    renderGreetingHeader();
+    renderQueuePills();
     renderActiveQueueWorkspace();
     renderAnalyticsScopeDropdown();
     if (state.activeTab === "analytics") {
@@ -1089,10 +1129,18 @@
     }
   }
 
-  function renderSidebar() {
-    const container = document.getElementById("queue-sidebar-list");
+  function renderQueuePills() {
+    const container = document.getElementById("queue-pills-bar");
+    const editBtn = document.getElementById("edit-queue-btn");
+    if (!container) return;
+
+    if (editBtn) {
+      if (getActiveQueue()) editBtn.classList.remove("hidden");
+      else editBtn.classList.add("hidden");
+    }
+
     if (!state.queues.length) {
-      container.innerHTML = `<p class="text-xs text-slate-400 py-6 text-center">No queues yet. Click <strong>+ New Queue</strong> to begin.</p>`;
+      container.innerHTML = `<span class="text-xs text-slate-400 font-medium px-1">No queues yet — click + New Queue</span>`;
       return;
     }
 
@@ -1100,28 +1148,20 @@
       .map((q) => {
         const isActive = q.id === state.activeQueueId;
         const waitingCount = (q.waiting_tokens || []).length;
-        const servingCode = q.in_service_token ? q.in_service_token.token_code : null;
         return `
           <button type="button" data-queue-id="${q.id}"
-            class="queue-select-btn w-full text-left p-3.5 rounded-xl border transition cursor-pointer ${
+            class="queue-select-btn inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer shrink-0 ${
               isActive
-                ? "bg-indigo-50/70 border-indigo-400 shadow-xs ring-1 ring-indigo-500/20"
-                : "bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300"
+                ? "bg-teal-600 text-white shadow-sm"
+                : "bg-white text-slate-700 border border-slate-200 hover:border-teal-300 hover:bg-teal-50/40"
             }">
-            <div class="flex items-center justify-between gap-2">
-              <span class="text-sm font-bold ${isActive ? "text-indigo-950" : "text-slate-800"} truncate">${escapeHtml(q.name)}</span>
-              <span class="font-mono-code px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                waitingCount > 0 ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600 border border-slate-200"
-              }">${waitingCount}</span>
-            </div>
-            <div class="flex items-center justify-between mt-1.5 text-[11px] text-slate-500 gap-2">
-              <span class="font-mono-code font-semibold text-slate-600">${escapeHtml(q.prefix)} &bull; ${escapeHtml(q.counter_label)}</span>
-              ${
-                servingCode
-                  ? `<span class="font-mono-code font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">Serving ${escapeHtml(servingCode)}</span>`
-                  : `<span class="text-slate-400">Idle</span>`
-              }
-            </div>
+            <span class="font-mono-code text-[10px] font-bold px-1.5 py-0.5 rounded ${
+              isActive ? "bg-teal-700/80 text-teal-50" : "bg-slate-100 text-slate-600"
+            }">${escapeHtml(q.prefix)}</span>
+            <span class="truncate max-w-[140px]">${escapeHtml(q.name)}</span>
+            <span class="font-mono-code text-[11px] font-bold px-1.5 py-0.5 rounded-full ${
+              isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-700"
+            }">${waitingCount}</span>
           </button>
         `;
       })
@@ -1141,7 +1181,7 @@
       return `<span class="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-bold">Priority</span>`;
     }
     if (priority === "Follow-up") {
-      return `<span class="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-semibold">Follow-up</span>`;
+      return `<span class="px-2 py-0.5 rounded-md bg-violet-50 text-violet-700 border border-violet-200 text-[11px] font-semibold">Follow-up</span>`;
     }
     return `<span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200 text-[11px] font-medium">Standard</span>`;
   }
@@ -1181,54 +1221,49 @@
     document.getElementById("active-queue-sla").textContent = `${q.sla_minutes}m`;
     document.getElementById("active-queue-waiting-count").textContent = String(waiting.length);
     document.getElementById("active-queue-clearance").textContent = `${estClearance}m`;
-    const listBadge = document.getElementById("waiting-list-badge");
-    if (listBadge) listBadge.textContent = String(waiting.length);
+    const spotlightCounter = document.getElementById("spotlight-counter-label");
+    if (spotlightCounter) spotlightCounter.textContent = q.counter_label;
 
     const assignTopHeaderBtn = document.getElementById("assign-top-header-btn");
     assignTopHeaderBtn.disabled = waiting.length === 0;
 
-    // Currently In Service Banner
+    // Currently In Service Spotlight Card
     const banner = document.getElementById("in-service-banner");
     const activeToken = q.in_service_token;
     if (activeToken) {
-      banner.className = "rounded-xl border border-emerald-300 bg-emerald-50/80 p-4 shadow-sm";
+      banner.className = "rounded-xl bg-white/10 border border-white/20 p-3.5 backdrop-blur-xs";
       banner.innerHTML = `
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div class="flex items-start gap-3.5">
-            <div class="px-3 py-2 rounded-lg bg-emerald-600 text-white font-mono font-bold text-base shadow-xs">
-              ${escapeHtml(activeToken.token_code)}
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="font-mono-code text-sm font-bold px-2.5 py-0.5 rounded-lg bg-white text-teal-800 shadow-xs">
+                ${escapeHtml(activeToken.token_code)}
+              </span>
+              <span class="text-xs font-semibold text-teal-100">${escapeHtml(activeToken.priority)}</span>
             </div>
-            <div>
-              <div class="flex items-center gap-2 flex-wrap">
-                <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-700">Currently In Service &bull; ${escapeHtml(q.counter_label)}</span>
-                ${priorityBadgeHtml(activeToken.priority)}
-              </div>
-              <p class="text-base font-bold text-slate-900 mt-0.5">${escapeHtml(activeToken.person_name)}</p>
-              <p class="text-xs text-slate-600 mt-0.5">
-                Called at ${formatTime(activeToken.assigned_at)}
-                &bull; Waited ${activeToken.wait_duration_mins !== null ? Number(activeToken.wait_duration_mins).toFixed(1) : "0.0"} mins
-                ${activeToken.notes ? ` &bull; Note: "${escapeHtml(activeToken.notes)}"` : ""}
-              </p>
-            </div>
+            <p class="text-base font-bold text-white mt-2">${escapeHtml(activeToken.person_name)}</p>
+            <p class="text-[11px] text-teal-100/90 mt-0.5">
+              Called ${formatTime(activeToken.assigned_at)} &bull; Waited ${
+                activeToken.wait_duration_mins !== null ? Number(activeToken.wait_duration_mins).toFixed(1) : "0.0"
+              }m
+              ${activeToken.notes ? ` &bull; "${escapeHtml(activeToken.notes)}"` : ""}
+            </p>
           </div>
-          <button type="button" id="complete-service-btn"
-            class="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold shadow-xs transition cursor-pointer shrink-0">
-            ✓ Mark Service Complete
-          </button>
         </div>
+        <button type="button" id="complete-service-btn"
+          class="mt-3 w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-teal-900/60 hover:bg-teal-900/80 border border-white/20 text-white text-xs font-semibold transition cursor-pointer">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          Mark Service Complete
+        </button>
       `;
       document.getElementById("complete-service-btn").addEventListener("click", () => {
         completeActiveService(q.id);
       });
     } else {
-      banner.className = "rounded-xl border border-slate-200 bg-slate-100/70 p-4";
+      banner.className = "rounded-xl bg-white/10 border border-white/15 p-3.5";
       banner.innerHTML = `
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-xs font-bold uppercase tracking-wider text-slate-500">Currently In Service &bull; ${escapeHtml(q.counter_label)}</p>
-            <p class="text-sm text-slate-600 mt-0.5">Counter is idle. Click <strong>Assign Top Token for Service</strong> to call #1.</p>
-          </div>
-        </div>
+        <p class="text-xs font-semibold text-white">Counter is currently idle</p>
+        <p class="text-[11px] text-teal-100/80 mt-0.5">Click <strong>Assign Top Token (#1)</strong> below to call the next person.</p>
       `;
     }
 
@@ -1249,7 +1284,7 @@
       listContainer.innerHTML = `
         <div class="p-8 text-center">
           <p class="text-sm font-semibold text-slate-600">No tokens currently waiting in ${escapeHtml(q.name)}.</p>
-          <p class="text-xs text-slate-400 mt-1">Use the "Issue New Token" form on the left to add someone.</p>
+          <p class="text-xs text-slate-400 mt-1">Use the "Quick Add Person" card on the right to add someone.</p>
         </div>
       `;
     } else if (filtered.length === 0) {
@@ -1268,12 +1303,12 @@
 
           return `
             <div class="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/80 transition fade-in ${
-              isFirst ? "bg-indigo-50/35" : ""
+              isFirst ? "bg-teal-50/40" : ""
             }">
               <div class="flex items-start gap-3.5">
                 <div class="font-mono-code w-9 h-9 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
                   isFirst
-                    ? "bg-indigo-600 text-white shadow-xs"
+                    ? "bg-teal-600 text-white shadow-xs"
                     : "bg-slate-100 text-slate-700 border border-slate-200"
                 }">
                   #${t.position}
@@ -1298,24 +1333,28 @@
                 ${
                   isFirst
                     ? `<button type="button" data-action="assign-top"
-                        class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition cursor-pointer mr-1">
-                        ▶ Assign
+                        class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold transition cursor-pointer mr-1">
+                        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>
+                        Assign
                       </button>`
                     : ""
                 }
                 <button type="button" data-action="move-up" data-token-id="${t.id}" ${isFirst ? "disabled" : ""}
                   title="Move Up"
-                  class="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold text-slate-700 transition cursor-pointer">
-                  ↑ Up
+                  class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold text-slate-700 transition cursor-pointer">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+                  Up
                 </button>
                 <button type="button" data-action="move-down" data-token-id="${t.id}" ${isLast ? "disabled" : ""}
                   title="Move Down"
-                  class="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold text-slate-700 transition cursor-pointer">
-                  ↓ Down
+                  class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold text-slate-700 transition cursor-pointer">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+                  Down
                 </button>
                 <button type="button" data-action="cancel-token" data-token-id="${t.id}"
                   data-token-code="${escapeHtml(t.token_code)}" data-person-name="${escapeHtml(t.person_name)}"
-                  class="px-2.5 py-1.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold transition cursor-pointer ml-1">
+                  class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold transition cursor-pointer ml-1">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
                   Cancel
                 </button>
               </div>
@@ -1457,8 +1496,8 @@
           {
             label: "Waiting Queue Length",
             data: hourly_trend.map((p) => p.waiting_length),
-            borderColor: "#4f46e5",
-            backgroundColor: "rgba(79, 70, 229, 0.12)",
+            borderColor: "#6366f1",
+            backgroundColor: "rgba(99, 102, 241, 0.14)",
             fill: true,
             tension: 0.35,
             borderWidth: 2.5,
@@ -1466,8 +1505,8 @@
           {
             label: "Cumulative Tokens Served",
             data: hourly_trend.map((p) => p.cumulative_served),
-            borderColor: "#10b981",
-            backgroundColor: "rgba(16, 185, 129, 0.08)",
+            borderColor: "#0d9488",
+            backgroundColor: "rgba(13, 148, 136, 0.08)",
             fill: false,
             tension: 0.35,
             borderWidth: 2.5,
@@ -1499,7 +1538,7 @@
               lifecycle_breakdown.served,
               lifecycle_breakdown.cancelled,
             ],
-            backgroundColor: ["#4f46e5", "#0ea5e9", "#10b981", "#f43f5e"],
+            backgroundColor: ["#f59e0b", "#6366f1", "#0d9488", "#f43f5e"],
             borderWidth: 2,
             borderColor: "#ffffff",
           },
@@ -1524,7 +1563,7 @@
           {
             label: "Observed Avg Wait (mins)",
             data: sla_comparison.map((q) => q.avg_wait_mins),
-            backgroundColor: "#6366f1",
+            backgroundColor: "#0d9488",
             borderRadius: 6,
           },
           {
@@ -1588,23 +1627,24 @@
     state.activeTab = tab;
     const opsTab = document.getElementById("operations-tab");
     const anaTab = document.getElementById("analytics-tab");
-    const opsBtn = document.getElementById("tab-btn-operations");
-    const anaBtn = document.getElementById("tab-btn-analytics");
+    const opsBtn = document.getElementById("rail-btn-operations");
+    const anaBtn = document.getElementById("rail-btn-analytics");
+
+    const activeCls =
+      "flex-1 md:flex-none flex flex-col items-center justify-center gap-1 py-2.5 px-3 rounded-xl bg-teal-500/15 text-teal-400 border border-teal-500/30 transition cursor-pointer";
+    const idleCls =
+      "flex-1 md:flex-none flex flex-col items-center justify-center gap-1 py-2.5 px-3 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 border border-transparent transition cursor-pointer";
 
     if (tab === "operations") {
       opsTab.classList.remove("hidden");
       anaTab.classList.add("hidden");
-      opsBtn.className =
-        "px-3 py-1 rounded-md text-xs sm:text-sm font-semibold transition cursor-pointer bg-white text-slate-900 shadow-xs";
-      anaBtn.className =
-        "px-3 py-1 rounded-md text-xs sm:text-sm font-semibold transition cursor-pointer text-slate-600 hover:text-slate-900";
+      if (opsBtn) opsBtn.className = activeCls;
+      if (anaBtn) anaBtn.className = idleCls;
     } else {
       opsTab.classList.add("hidden");
       anaTab.classList.remove("hidden");
-      anaBtn.className =
-        "px-3 py-1 rounded-md text-xs sm:text-sm font-semibold transition cursor-pointer bg-white text-slate-900 shadow-xs";
-      opsBtn.className =
-        "px-3 py-1 rounded-md text-xs sm:text-sm font-semibold transition cursor-pointer text-slate-600 hover:text-slate-900";
+      if (anaBtn) anaBtn.className = activeCls;
+      if (opsBtn) opsBtn.className = idleCls;
       renderAnalyticsDashboard();
     }
   }
@@ -1616,14 +1656,36 @@
       : "Create Service Queue";
     document.getElementById("queue-modal-id").value = queueToEdit ? String(queueToEdit.id) : "";
     document.getElementById("queue-modal-name").value = queueToEdit ? queueToEdit.name : "";
-    document.getElementById("queue-modal-prefix").value = queueToEdit ? queueToEdit.prefix : "";
+    document.getElementById("queue-modal-prefix").value = queueToEdit
+      ? queueToEdit.prefix
+      : state.settings.defaultPrefix || "OPD";
     document.getElementById("queue-modal-counter").value = queueToEdit ? queueToEdit.counter_label : "";
-    document.getElementById("queue-modal-sla").value = queueToEdit ? String(queueToEdit.sla_minutes) : "10";
+    document.getElementById("queue-modal-sla").value = queueToEdit
+      ? String(queueToEdit.sla_minutes)
+      : String(state.settings.defaultSla || 10);
     modal.classList.remove("hidden");
   }
 
   function closeQueueModal() {
     document.getElementById("queue-modal").classList.add("hidden");
+  }
+
+  function openSettingsModal() {
+    document.getElementById("settings-display-name").value =
+      state.settings.displayName || state.session?.manager?.name || "";
+    document.getElementById("settings-greeting-msg").value =
+      state.settings.greetingMessage || DEFAULT_SETTINGS.greetingMessage;
+    document.getElementById("settings-default-prefix").value =
+      state.settings.defaultPrefix || DEFAULT_SETTINGS.defaultPrefix;
+    document.getElementById("settings-default-sla").value = String(
+      state.settings.defaultSla || DEFAULT_SETTINGS.defaultSla
+    );
+    document.getElementById("settings-sound-toggle").checked = Boolean(state.settings.soundEnabled);
+    document.getElementById("settings-modal").classList.remove("hidden");
+  }
+
+  function closeSettingsModal() {
+    document.getElementById("settings-modal").classList.add("hidden");
   }
 
   function openCancelModal(queueId, tokenId, tokenCode, personName) {
@@ -1647,23 +1709,22 @@
     document.getElementById("login-view").classList.add("hidden");
     document.getElementById("app-view").classList.remove("hidden");
     const mgrName = state.session?.manager?.name || "Manager";
-    document.getElementById("manager-name").textContent = mgrName;
-    document.getElementById("manager-email").textContent = state.session?.manager?.email || "";
     const avatarEl = document.getElementById("manager-avatar");
     const initialsEl = document.getElementById("manager-initials");
     const avatarUrl = state.session?.manager?.avatar_url;
-    if (avatarUrl) {
+    if (avatarUrl && avatarEl) {
       avatarEl.src = avatarUrl;
       avatarEl.classList.remove("hidden");
       if (initialsEl) initialsEl.classList.add("hidden");
     } else {
-      avatarEl.classList.add("hidden");
+      if (avatarEl) avatarEl.classList.add("hidden");
       if (initialsEl) {
         const parts = mgrName.replace(/^Dr\.\s*/i, "").trim().split(/\s+/);
         initialsEl.textContent = parts.slice(0, 2).map((p) => p[0]?.toUpperCase() || "").join("") || "QM";
         initialsEl.classList.remove("hidden");
       }
     }
+    renderGreetingHeader();
     updateSyncBadge();
     await loadQueues();
   }
@@ -1684,10 +1745,32 @@
     });
 
     document.getElementById("logout-btn").addEventListener("click", performLogout);
+    const mobileLogoutBtn = document.getElementById("logout-btn-mobile");
+    if (mobileLogoutBtn) mobileLogoutBtn.addEventListener("click", performLogout);
 
-    // Navigation Tabs
-    document.getElementById("tab-btn-operations").addEventListener("click", () => switchTab("operations"));
-    document.getElementById("tab-btn-analytics").addEventListener("click", () => switchTab("analytics"));
+    // Dark-Rail Navigation Tabs & Settings
+    document.getElementById("rail-btn-operations").addEventListener("click", () => switchTab("operations"));
+    document.getElementById("rail-btn-analytics").addEventListener("click", () => switchTab("analytics"));
+    document.getElementById("rail-btn-settings").addEventListener("click", openSettingsModal);
+    document.getElementById("header-settings-btn").addEventListener("click", openSettingsModal);
+
+    // Greeting & Counter Settings Modal
+    document.getElementById("settings-modal-close").addEventListener("click", closeSettingsModal);
+    document.getElementById("settings-modal-cancel").addEventListener("click", closeSettingsModal);
+    document.getElementById("settings-modal-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      saveSettings({
+        displayName: document.getElementById("settings-display-name").value.trim(),
+        greetingMessage: document.getElementById("settings-greeting-msg").value.trim() || DEFAULT_SETTINGS.greetingMessage,
+        defaultPrefix:
+          (document.getElementById("settings-default-prefix").value.trim() || "OPD").toUpperCase(),
+        defaultSla: Math.max(1, Number(document.getElementById("settings-default-sla").value) || 10),
+        soundEnabled: document.getElementById("settings-sound-toggle").checked,
+      });
+      closeSettingsModal();
+      renderGreetingHeader();
+      showToast("Greeting & counter settings saved.", "success");
+    });
 
     // Queue Creation & Editing
     document.getElementById("new-queue-btn").addEventListener("click", () => openQueueModal(null));
@@ -1790,6 +1873,7 @@
   }
 
   async function init() {
+    loadSettings();
     bindEvents();
     initGoogleSignIn();
     const savedAuth = localStorage.getItem(STORAGE_KEYS.AUTH);
