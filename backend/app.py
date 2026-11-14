@@ -15,6 +15,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
+import httpx
 from pydantic import BaseModel, Field
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -94,6 +95,8 @@ def init_db() -> None:
                 email TEXT NOT NULL UNIQUE,
                 password_hash TEXT NOT NULL,
                 role TEXT NOT NULL DEFAULT 'Queue Operations Manager',
+                google_sub TEXT DEFAULT '',
+                avatar_url TEXT DEFAULT '',
                 created_at TEXT NOT NULL
             );
 
@@ -134,6 +137,14 @@ def init_db() -> None:
             );
             """
         )
+
+        existing_cols = {
+            row["name"] for row in conn.execute("PRAGMA table_info(managers)").fetchall()
+        }
+        if "google_sub" not in existing_cols:
+            conn.execute("ALTER TABLE managers ADD COLUMN google_sub TEXT DEFAULT ''")
+        if "avatar_url" not in existing_cols:
+            conn.execute("ALTER TABLE managers ADD COLUMN avatar_url TEXT DEFAULT ''")
 
         existing_manager = conn.execute(
             "SELECT id FROM managers WHERE email = ?", (DEMO_EMAIL,)
@@ -304,6 +315,10 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class GoogleLoginRequest(BaseModel):
+    credential: str = Field(..., min_length=10)
+
+
 class QueueCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     prefix: str = Field(..., min_length=1, max_length=10)
@@ -355,7 +370,7 @@ def get_current_manager(authorization: Optional[str] = Header(default=None)) -> 
     with get_conn() as conn:
         row = conn.execute(
             """
-            SELECT m.id, m.name, m.email, m.role
+            SELECT m.id, m.name, m.email, m.role, m.avatar_url
             FROM sessions s
             JOIN managers m ON m.id = s.manager_id
             WHERE s.token = ?
@@ -471,6 +486,94 @@ def health_check() -> Dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/api/auth/config")
+def get_auth_config() -> Dict[str, str]:
+    return {"google_client_id": os.environ.get("GOOGLE_CLIENT_ID", "").strip()}
+
+
+@app.post("/api/auth/google")
+def google_login(payload: GoogleLoginRequest) -> Dict[str, Any]:
+    google_client_id = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+    if not google_client_id:
+        raise HTTPException(
+            status_code=503,
+            detail="Google Sign-In is not configured on the server. Set GOOGLE_CLIENT_ID to enable it.",
+        )
+
+    try:
+        resp = httpx.get(
+            "https://oauth2.googleapis.com/tokeninfo",
+            params={"id_token": payload.credential},
+            timeout=8.0,
+        )
+    except httpx.RequestError:
+        raise HTTPException(status_code=502, detail="Could not reach Google token verification service.")
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid Google ID token.")
+
+    info = resp.json()
+    if info.get("aud") != google_client_id:
+        raise HTTPException(status_code=401, detail="Google token audience mismatch.")
+
+    email_verified = str(info.get("email_verified", "")).lower() == "true"
+    email = str(info.get("email", "")).strip().lower()
+    sub = str(info.get("sub", "")).strip()
+    name = str(info.get("name") or email.split("@")[0]).strip()
+    avatar_url = str(info.get("picture", "")).strip()
+
+    if not email or not email_verified or not sub:
+        raise HTTPException(status_code=401, detail="Google account email is not verified.")
+
+    with get_conn() as conn:
+        manager = conn.execute(
+            "SELECT id, name, email, role, avatar_url FROM managers WHERE google_sub = ? OR LOWER(email) = ?",
+            (sub, email),
+        ).fetchone()
+
+        if manager:
+            conn.execute(
+                "UPDATE managers SET google_sub = ?, avatar_url = ?, name = ? WHERE id = ?",
+                (sub, avatar_url or manager["avatar_url"], name, manager["id"]),
+            )
+            manager_id = manager["id"]
+            role = manager["role"]
+        else:
+            cur = conn.execute(
+                """
+                INSERT INTO managers (name, email, password_hash, role, google_sub, avatar_url, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    name,
+                    email,
+                    hash_password(secrets.token_urlsafe(32)),
+                    "Queue Operations Manager (Google)",
+                    sub,
+                    avatar_url,
+                    iso_utc(),
+                ),
+            )
+            manager_id = cur.lastrowid
+            role = "Queue Operations Manager (Google)"
+
+        session_token = secrets.token_urlsafe(32)
+        conn.execute(
+            "INSERT INTO sessions (token, manager_id, created_at) VALUES (?, ?, ?)",
+            (session_token, manager_id, iso_utc()),
+        )
+        return {
+            "token": session_token,
+            "manager": {
+                "id": manager_id,
+                "name": name,
+                "email": email,
+                "role": role,
+                "avatar_url": avatar_url,
+            },
+        }
+
+
 @app.post("/api/auth/login")
 def login(payload: LoginRequest) -> Dict[str, Any]:
     email = payload.email.strip().lower()
@@ -479,7 +582,7 @@ def login(payload: LoginRequest) -> Dict[str, Any]:
 
     with get_conn() as conn:
         manager = conn.execute(
-            "SELECT id, name, email, password_hash, role FROM managers WHERE LOWER(email) = ?",
+            "SELECT id, name, email, password_hash, role, avatar_url FROM managers WHERE LOWER(email) = ?",
             (email,),
         ).fetchone()
         if not manager or not verify_password(payload.password, manager["password_hash"]):
@@ -497,6 +600,7 @@ def login(payload: LoginRequest) -> Dict[str, Any]:
                 "name": manager["name"],
                 "email": manager["email"],
                 "role": manager["role"],
+                "avatar_url": manager["avatar_url"] or "",
             },
         }
 

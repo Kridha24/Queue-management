@@ -6,6 +6,7 @@
   <title>QueueFlow Pro — Enterprise Queue Management</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -63,13 +64,21 @@
           </button>
         </form>
 
-        <div class="mt-5 pt-5 border-t border-slate-200">
+        <div class="mt-5 pt-5 border-t border-slate-200 space-y-3">
+          <div id="google-signin-section" class="space-y-2">
+            <div id="google-signin-btn-container" class="flex justify-center"></div>
+            <div id="google-signin-unconfigured" class="hidden p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-600">
+              <p class="font-semibold text-slate-700 mb-0.5">Google Sign-In Ready</p>
+              <p>Set <code class="font-mono text-indigo-600">GOOGLE_CLIENT_ID</code> in your server environment to enable one-click Google Account login.</p>
+            </div>
+          </div>
+
           <button type="button" id="demo-login-btn"
             class="w-full py-2.5 px-4 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-sm border border-slate-300 transition flex items-center justify-center gap-2 cursor-pointer">
             <span>⚡</span>
             <span>Instant Demo Login</span>
           </button>
-          <p class="text-center text-xs text-slate-400 mt-2.5">
+          <p class="text-center text-xs text-slate-400">
             Demo credentials: <code class="text-slate-600 font-mono">manager@queueflow.io</code> / <code class="text-slate-600 font-mono">manager123</code>
           </p>
         </div>
@@ -114,9 +123,12 @@
             class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition cursor-pointer">
             <span>🗑</span> Clear All Data
           </button>
-          <div class="hidden md:flex flex-col items-end leading-tight">
-            <span id="manager-name" class="text-xs font-semibold text-slate-800">Manager</span>
-            <span id="manager-email" class="text-[11px] text-slate-500">manager@queueflow.io</span>
+          <div class="hidden md:flex items-center gap-2.5">
+            <img id="manager-avatar" src="" alt="Profile" class="hidden w-8 h-8 rounded-full border border-slate-200 object-cover" />
+            <div class="flex flex-col items-end leading-tight">
+              <span id="manager-name" class="text-xs font-semibold text-slate-800">Manager</span>
+              <span id="manager-email" class="text-[11px] text-slate-500">manager@queueflow.io</span>
+            </div>
           </div>
           <button type="button" id="logout-btn"
             class="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition cursor-pointer">

@@ -664,6 +664,60 @@
     }
   }
 
+  async function handleGoogleCredentialResponse(response) {
+    const loginError = document.getElementById("login-error");
+    loginError.classList.add("hidden");
+    try {
+      const sessionData = await apiRequest("/api/auth/google", {
+        method: "POST",
+        body: JSON.stringify({ credential: response.credential }),
+      });
+      state.session = sessionData;
+      localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(sessionData));
+      await enterApp();
+      showToast(`Signed in with Google as ${sessionData.manager.name}`, "success");
+    } catch (err) {
+      loginError.textContent = err.message || "Google Sign-In failed.";
+      loginError.classList.remove("hidden");
+    }
+  }
+
+  async function initGoogleSignIn() {
+    if (state.offlineMode) return;
+    try {
+      const cfg = await apiRequest("/api/auth/config");
+      const clientId = (cfg.google_client_id || "").trim();
+      const container = document.getElementById("google-signin-btn-container");
+      const unconfigured = document.getElementById("google-signin-unconfigured");
+      if (!clientId) {
+        unconfigured.classList.remove("hidden");
+        return;
+      }
+      unconfigured.classList.add("hidden");
+
+      const tryRender = (attempts = 0) => {
+        if (window.google?.accounts?.id) {
+          window.google.accounts.id.initialize({
+            client_id: clientId,
+            callback: handleGoogleCredentialResponse,
+          });
+          container.innerHTML = "";
+          window.google.accounts.id.renderButton(container, {
+            theme: "outline",
+            size: "large",
+            width: 360,
+            text: "continue_with",
+          });
+        } else if (attempts < 20) {
+          setTimeout(() => tryRender(attempts + 1), 150);
+        }
+      };
+      tryRender();
+    } catch {
+      // Ignore if offline
+    }
+  }
+
   function handleForceLogout() {
     state.session = null;
     localStorage.removeItem(STORAGE_KEYS.AUTH);
@@ -1535,6 +1589,14 @@
     document.getElementById("app-view").classList.remove("hidden");
     document.getElementById("manager-name").textContent = state.session?.manager?.name || "Manager";
     document.getElementById("manager-email").textContent = state.session?.manager?.email || "";
+    const avatarEl = document.getElementById("manager-avatar");
+    const avatarUrl = state.session?.manager?.avatar_url;
+    if (avatarUrl) {
+      avatarEl.src = avatarUrl;
+      avatarEl.classList.remove("hidden");
+    } else {
+      avatarEl.classList.add("hidden");
+    }
     updateSyncBadge();
     await loadQueues();
   }
@@ -1662,6 +1724,7 @@
 
   async function init() {
     bindEvents();
+    initGoogleSignIn();
     const savedAuth = localStorage.getItem(STORAGE_KEYS.AUTH);
     if (savedAuth) {
       try {

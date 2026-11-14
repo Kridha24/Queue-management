@@ -221,3 +221,49 @@ def test_full_queue_lifecycle_and_analytics(client: TestClient):
     assert clear_res.status_code == 200
     assert clear_res.json() == []
 
+
+def test_google_auth_integration(client: TestClient, monkeypatch):
+    # 1. Config endpoint returns empty string when GOOGLE_CLIENT_ID is unset
+    monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
+    cfg_res = client.get("/api/auth/config")
+    assert cfg_res.status_code == 200
+    assert cfg_res.json()["google_client_id"] == ""
+
+    # 2. Google login returns 503 when not configured
+    unconf = client.post("/api/auth/google", json={"credential": "dummy-jwt-token-12345"})
+    assert unconf.status_code == 503
+
+    # 3. With GOOGLE_CLIENT_ID configured and valid Google tokeninfo response
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "test-client-id.apps.googleusercontent.com")
+    cfg_res2 = client.get("/api/auth/config")
+    assert cfg_res2.json()["google_client_id"] == "test-client-id.apps.googleusercontent.com"
+
+    class MockResp:
+        status_code = 200
+
+        def json(self):
+            return {
+                "aud": "test-client-id.apps.googleusercontent.com",
+                "sub": "google-sub-998877",
+                "email": "alex.google@example.com",
+                "email_verified": "true",
+                "name": "Alex Google",
+                "picture": "https://example.com/avatar.png",
+            }
+
+    monkeypatch.setattr("backend.app.httpx.get", lambda *args, **kwargs: MockResp())
+
+    g_res = client.post("/api/auth/google", json={"credential": "valid-google-id-token"})
+    assert g_res.status_code == 200
+    data = g_res.json()
+    assert data["token"]
+    assert data["manager"]["email"] == "alex.google@example.com"
+    assert data["manager"]["name"] == "Alex Google"
+    assert data["manager"]["avatar_url"] == "https://example.com/avatar.png"
+
+    # Session token works for protected endpoints
+    me_res = client.get("/api/auth/me", headers={"Authorization": f"Bearer {data['token']}"})
+    assert me_res.status_code == 200
+    assert me_res.json()["manager"]["email"] == "alex.google@example.com"
+
+
