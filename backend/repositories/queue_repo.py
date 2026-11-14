@@ -65,3 +65,4 @@ def increment_queue_sequence(conn: Any, queue_id: int, next_seq: int) -> None:
 def clear_all_queues_and_tokens(conn: Any) -> None:
     conn.execute("DELETE FROM tokens;")
     conn.execute("DELETE FROM queues;")
+

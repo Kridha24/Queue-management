@@ -127,6 +127,28 @@ def mark_token_cancelled(conn: Any, token_id: int, cancelled_at: str, reason: st
     )
 
 
+def restore_token_to_waiting(conn: Any, token_id: int, position: int) -> None:
+    conn.execute(
+        """
+        UPDATE tokens
+        SET status = 'WAITING', position = ?, cancelled_at = NULL, cancel_reason = ''
+        WHERE id = ?
+        """,
+        (position, token_id),
+    )
+
+
+def shift_waiting_positions_for_insert(conn: Any, queue_id: int, from_position: int) -> None:
+    conn.execute(
+        """
+        UPDATE tokens
+        SET position = position + 1
+        WHERE queue_id = ? AND status = 'WAITING' AND position >= ?
+        """,
+        (queue_id, from_position),
+    )
+
+
 def reindex_waiting_tokens(conn: Any, queue_id: int) -> None:
     rows = get_waiting_tokens(conn, queue_id)
     for idx, row in enumerate(rows, start=1):
@@ -138,3 +160,4 @@ def list_tokens_for_analytics(conn: Any, queue_id: Optional[int] = None) -> List
     if queue_id is not None:
         return conn.execute("SELECT * FROM tokens WHERE queue_id = ?", (queue_id,)).fetchall()
     return conn.execute("SELECT * FROM tokens").fetchall()
+

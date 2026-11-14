@@ -186,3 +186,4 @@ def check_auth_rate_limit(request: Request) -> None:
     _memory_rate_buckets[client_ip] = bucket
     if len(bucket) > limit:
         raise HTTPException(status_code=429, detail="Too many authentication attempts. Please try again later.")
+

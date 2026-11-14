@@ -36,3 +36,4 @@ def upsert_google_manager(
         (name, email, password_hash, avatar_url),
     )
     return conn.execute("SELECT * FROM managers WHERE id = ?", (cur.lastrowid,)).fetchone()
+

@@ -30,3 +30,4 @@ def get_analytics(
     manager: Dict[str, Any] = Depends(get_current_manager),
 ) -> Dict[str, Any]:
     return analytics_service.compute_analytics(queue_id=queue_id)
+

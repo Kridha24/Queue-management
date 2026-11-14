@@ -13,6 +13,7 @@ import {
   QueueModal,
   CancelTokenModal,
   ResetDataModal,
+  TokenSlipModal,
   ToastContainer,
 } from "./components/Modals";
 
@@ -47,6 +48,7 @@ export default function App() {
   const [queueModalOpen, setQueueModalOpen] = useState(false);
   const [queueToEdit, setQueueToEdit] = useState(null);
   const [cancelTarget, setCancelTarget] = useState(null);
+  const [slipTarget, setSlipTarget] = useState(null);
   const [resetModalOpen, setResetModalOpen] = useState(false);
   const [toasts, setToasts] = useState([]);
   const [, setTick] = useState(0);
@@ -63,12 +65,27 @@ export default function App() {
     }
   }, [settings.colorMode]);
 
-  const showToast = useCallback((message, type = "success") => {
+  const dismissToast = useCallback((id) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  const showToast = useCallback((message, type = "success", options = {}) => {
     const id = Date.now() + Math.random();
-    setToasts((prev) => [...prev, { id, message, type }]);
+    const durationMs = options.durationMs || 3400;
+    setToasts((prev) => [
+      ...prev,
+      {
+        id,
+        message,
+        type,
+        durationMs: options.actionLabel ? durationMs : null,
+        actionLabel: options.actionLabel || null,
+        onAction: options.onAction || null,
+      },
+    ]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 3400);
+    }, durationMs);
   }, []);
 
   const updateSettings = useCallback((nextSettings) => {
@@ -197,7 +214,15 @@ export default function App() {
         handleUnauthorized
       );
       await loadQueues();
-      showToast(`Token ${res?.token?.token_code || ""} issued for ${payload.person_name}!`);
+      const issuedTok = res?.token || res;
+      const targetQueue = res?.queue || queues.find((q) => q.id === queueId);
+      showToast(`Token ${issuedTok?.token_code || ""} issued for ${payload.person_name}!`, "success", {
+        durationMs: 5000,
+        actionLabel: "View / Print Slip",
+        onAction: () => {
+          if (issuedTok) setSlipTarget({ token: issuedTok, queue: targetQueue });
+        },
+      });
     } catch (err) {
       showToast(err.message, "error");
     }
@@ -213,6 +238,36 @@ export default function App() {
       );
       await loadQueues();
       showToast(`Token moved ${direction}.`, "info");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  };
+
+  const handleReorderToken = async (queueId, tokenId, targetPosition) => {
+    try {
+      await apiRequest(
+        `/api/queues/${queueId}/tokens/${tokenId}/reorder`,
+        { method: "PATCH", body: JSON.stringify({ target_position: targetPosition }) },
+        session.token,
+        handleUnauthorized
+      );
+      await loadQueues();
+      showToast(`Token moved to #${targetPosition}.`, "info");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  };
+
+  const handleRestoreToken = async (queueId, tokenId, originalPosition) => {
+    try {
+      await apiRequest(
+        `/api/queues/${queueId}/tokens/${tokenId}/restore`,
+        { method: "POST", body: JSON.stringify({ original_position: originalPosition }) },
+        session.token,
+        handleUnauthorized
+      );
+      await loadQueues();
+      showToast("Token restored to waiting queue!", "success");
     } catch (err) {
       showToast(err.message, "error");
     }
@@ -250,8 +305,9 @@ export default function App() {
   };
 
   const handleConfirmCancel = async (queueId, tokenId, reason) => {
+    const tokenCode = cancelTarget?.tokenCode || "Token";
     try {
-      await apiRequest(
+      const res = await apiRequest(
         `/api/queues/${queueId}/tokens/${tokenId}/cancel`,
         { method: "POST", body: JSON.stringify({ reason }) },
         session.token,
@@ -259,7 +315,11 @@ export default function App() {
       );
       setCancelTarget(null);
       await loadQueues();
-      showToast("Token cancelled.", "info");
+      showToast(`${tokenCode} cancelled.`, "info", {
+        durationMs: 5000,
+        actionLabel: "Undo",
+        onAction: () => handleRestoreToken(queueId, tokenId, res?.cancelled_position || null),
+      });
     } catch (err) {
       showToast(err.message, "error");
     }
@@ -282,7 +342,9 @@ export default function App() {
     return (
       <>
         <LoginView onLogin={handleLogin} onGoogleToken={handleGoogleToken} theme={theme} />
-        <ToastContainer toasts={toasts} />
+        <TokenSlipModal slip={slipTarget} onClose={() => setSlipTarget(null)} />
+
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       </>
     );
   }
@@ -356,7 +418,9 @@ export default function App() {
           onAssignTop={handleAssignTop}
           activeQueue={activeQueue}
         />
-        <ToastContainer toasts={toasts} />
+        <TokenSlipModal slip={slipTarget} onClose={() => setSlipTarget(null)} />
+
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       </>
     );
   }
@@ -403,11 +467,13 @@ export default function App() {
               }}
               onIssueToken={handleIssueToken}
               onMoveToken={handleMoveToken}
+              onReorderToken={handleReorderToken}
               onAssignTop={handleAssignTop}
               onCompleteService={handleCompleteService}
               onOpenCancelModal={(queueId, tokenId, tokenCode, personName) =>
                 setCancelTarget({ queueId, tokenId, tokenCode, personName })
               }
+              onOpenTokenSlip={(token, queue) => setSlipTarget({ token, queue })}
               theme={theme}
             />
           )}
@@ -478,7 +544,9 @@ export default function App() {
         activeQueue={activeQueue}
       />
 
-      <ToastContainer toasts={toasts} />
+      <TokenSlipModal slip={slipTarget} onClose={() => setSlipTarget(null)} />
+
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }

@@ -17,6 +17,27 @@ import {
 import { Clock, Users, CheckCircle2, XCircle, Filter, Download } from "lucide-react";
 import { apiRequest } from "../utils/api";
 
+function GlassTooltip({ active, payload, label }) {
+  if (!active || !payload || payload.length === 0) return null;
+  return (
+    <div className="bg-[#0F172A]/95 backdrop-blur-md text-white rounded-xl border border-slate-700 shadow-xl px-3.5 py-2.5 text-xs space-y-1.5">
+      {label && <p className="font-bold text-slate-200 border-b border-slate-700/80 pb-1">{label}</p>}
+      {payload.map((entry) => (
+        <div key={entry.name} className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <span
+              className="w-2.5 h-2.5 rounded-full shrink-0"
+              style={{ backgroundColor: entry.color || entry.payload?.color || "#0D9488" }}
+            />
+            <span className="text-slate-300">{entry.name}</span>
+          </div>
+          <span className="font-mono-code tabular-nums font-bold text-white">{entry.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function AnalyticsView({ queues, token, onUnauthorized, theme, onShowToast }) {
   const [scope, setScope] = useState("all");
   const [data, setData] = useState(null);
@@ -223,15 +244,7 @@ export default function AnalyticsView({ queues, token, onUnauthorized, theme, on
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.2)" />
                   <XAxis dataKey="hour_label" tick={{ fontSize: 11, fill: "#94a3b8" }} />
                   <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#94a3b8" }} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#0f172a",
-                      borderColor: "#1e293b",
-                      borderRadius: "12px",
-                      fontSize: "12px",
-                      color: "#fff",
-                    }}
-                  />
+                  <Tooltip content={<GlassTooltip />} />
                   <Legend wrapperStyle={{ fontSize: "12px" }} />
                   <Area
                     type="monotone"
@@ -280,15 +293,7 @@ export default function AnalyticsView({ queues, token, onUnauthorized, theme, on
                       <Cell key={entry.name} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#0f172a",
-                      borderColor: "#1e293b",
-                      borderRadius: "12px",
-                      fontSize: "12px",
-                      color: "#fff",
-                    }}
-                  />
+                  <Tooltip content={<GlassTooltip />} />
                   <Legend wrapperStyle={{ fontSize: "12px" }} />
                 </PieChart>
               </ResponsiveContainer>
@@ -312,15 +317,7 @@ export default function AnalyticsView({ queues, token, onUnauthorized, theme, on
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.2)" />
                   <XAxis dataKey="queue_name" tick={{ fontSize: 11, fill: "#94a3b8" }} />
                   <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#0f172a",
-                      borderColor: "#1e293b",
-                      borderRadius: "12px",
-                      fontSize: "12px",
-                      color: "#fff",
-                    }}
-                  />
+                  <Tooltip content={<GlassTooltip />} />
                   <Legend wrapperStyle={{ fontSize: "12px" }} />
                   <Bar
                     dataKey="avg_wait_mins"

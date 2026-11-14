@@ -277,3 +277,4 @@ def init_db() -> None:
                 "INSERT INTO managers (name, email, password_hash, role, auth_provider) VALUES (?, ?, ?, ?, ?)",
                 ("Dr. A. Mehta", DEMO_EMAIL, _hash_password_raw(DEMO_PASSWORD), "Senior Queue Manager", "local"),
             )
+

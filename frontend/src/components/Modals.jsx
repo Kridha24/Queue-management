@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { X, AlertTriangle, CheckCircle2, Info } from "lucide-react";
+import { X, AlertTriangle, CheckCircle2, Info, Printer, QrCode, RotateCcw, Ticket } from "lucide-react";
 
 export function QueueModal({ isOpen, queueToEdit, defaultPrefix, defaultSla, onClose, onSave, theme }) {
   const [name, setName] = useState("");
@@ -233,7 +233,153 @@ export function ResetDataModal({ isOpen, onClose, onConfirm }) {
   );
 }
 
-export function ToastContainer({ toasts }) {
+function DeterministicQrSvg({ value }) {
+  const size = 21;
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  const isFinder = (r, c) =>
+    (r < 7 && c < 7) || (r < 7 && c >= size - 7) || (r >= size - 7 && c < 7);
+
+  const cells = [];
+  for (let r = 0; r < size; r += 1) {
+    for (let c = 0; c < size; c += 1) {
+      let filled = false;
+      if (isFinder(r, c)) {
+        const lr = r >= size - 7 ? r - (size - 7) : r;
+        const lc = c >= size - 7 ? c - (size - 7) : c;
+        filled =
+          lr === 0 ||
+          lr === 6 ||
+          lc === 0 ||
+          lc === 6 ||
+          (lr >= 2 && lr <= 4 && lc >= 2 && lc <= 4);
+      } else {
+        const seed = (hash ^ (r * 31 + c * 17) ^ ((r + 1) * (c + 3) * 13)) >>> 0;
+        filled = seed % 2 === 0;
+      }
+      if (filled) {
+        cells.push(<rect key={`${r}-${c}`} x={c} y={r} width={1} height={1} fill="currentColor" />);
+      }
+    }
+  }
+
+  return (
+    <svg
+      viewBox={`0 0 ${size} ${size}`}
+      className="w-28 h-28 text-slate-900 dark:text-white"
+      shapeRendering="crispEdges"
+      aria-label="Token QR Code"
+    >
+      {cells}
+    </svg>
+  );
+}
+
+export function TokenSlipModal({ slip, onClose }) {
+  if (!slip) return null;
+  const { token, queue } = slip;
+  const estWait =
+    token.position && queue
+      ? (token.position - 1) * (queue.sla_minutes || 10)
+      : 0;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden animate-fade-in"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="bg-[#0F172A] px-6 py-4 text-white flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Ticket className="w-4 h-4 text-teal-400" />
+            <span className="text-xs font-bold uppercase tracking-wider">Digital Token Slip</span>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 rounded-lg text-slate-400 hover:text-white cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-6 text-center space-y-4">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
+              {queue?.name || "Service Queue"}
+            </p>
+            <p className="font-mono-code text-4xl font-extrabold text-teal-600 dark:text-teal-400 mt-1">
+              {token.token_code}
+            </p>
+            <p className="text-sm font-bold text-slate-900 dark:text-white mt-1">{token.person_name}</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5 text-left bg-slate-50 dark:bg-slate-800/70 rounded-2xl p-3.5 border border-slate-200/80 dark:border-slate-700/80">
+            <div>
+              <p className="text-[10px] font-semibold uppercase text-slate-400">Counter</p>
+              <p className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                {queue?.counter_label || "Counter 1"}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase text-slate-400">Est. Wait</p>
+              <p className="font-mono-code tabular-nums text-xs font-bold text-slate-800 dark:text-slate-100">
+                ~{estWait} mins
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase text-slate-400">Position</p>
+              <p className="font-mono-code tabular-nums text-xs font-bold text-slate-800 dark:text-slate-100">
+                #{token.position || 1}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase text-slate-400">Priority</p>
+              <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{token.priority}</p>
+            </div>
+          </div>
+
+          <div className="flex flex-col items-center justify-center py-2">
+            <div className="p-3 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-xs">
+              <DeterministicQrSvg value={`${token.token_code}|${token.person_name}|${queue?.name || ""}`} />
+            </div>
+            <span className="inline-flex items-center gap-1 text-[10px] text-slate-400 mt-2">
+              <QrCode className="w-3 h-3" />
+              Scan at counter check-in
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2.5 pt-1">
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl bg-[#0D9488] hover:bg-teal-700 text-white text-xs font-bold transition active:scale-[0.98] cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              Print Slip
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function ToastContainer({ toasts, onDismiss }) {
   return (
     <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm pointer-events-none">
       {toasts.map((t) => {
@@ -248,13 +394,42 @@ export function ToastContainer({ toasts }) {
         return (
           <div
             key={t.id}
-            className="pointer-events-auto flex items-center gap-2.5 px-4 py-3 rounded-xl bg-slate-900 text-white text-xs font-semibold shadow-xl border border-slate-800 animate-fade-in"
+            className="pointer-events-auto rounded-xl bg-[#0F172A] text-white text-xs font-semibold shadow-xl border border-slate-700/80 overflow-hidden animate-fade-in"
           >
-            {icon}
-            <span>{t.message}</span>
+            <div className="flex items-center justify-between gap-3 px-4 py-3">
+              <div className="flex items-center gap-2.5">
+                {icon}
+                <span>{t.message}</span>
+              </div>
+              {t.actionLabel && t.onAction && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    t.onAction();
+                    if (onDismiss) onDismiss(t.id);
+                  }}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/30 text-[11px] font-bold transition cursor-pointer shrink-0"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  {t.actionLabel}
+                </button>
+              )}
+            </div>
+            {t.durationMs && (
+              <div className="h-0.5 w-full bg-slate-800">
+                <div
+                  className="h-full bg-teal-400 transition-all ease-linear"
+                  style={{
+                    width: "100%",
+                    animation: `shrinkBar ${t.durationMs}ms linear forwards`,
+                  }}
+                />
+              </div>
+            )}
           </div>
         );
       })}
+      <style>{`@keyframes shrinkBar { from { width: 100%; } to { width: 0%; } }`}</style>
     </div>
   );
 }

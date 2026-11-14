@@ -25,3 +25,4 @@ class AuthResponse(BaseModel):
     token: str
     manager: ManagerProfile
     expires_in: Optional[int] = None
+

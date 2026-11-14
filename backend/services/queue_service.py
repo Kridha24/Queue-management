@@ -292,8 +292,67 @@ def cancel_token(queue_id: int, token_id: int, reason: str = "") -> Dict[str, An
             raise DomainError(404, "TOKEN_NOT_FOUND", "Token not found in this queue.")
 
         validate_token_transition(target["status"], "CANCELLED")
+        original_pos = target["position"]
         token_repo.mark_token_cancelled(conn, token_id, iso_utc(), reason.strip())
         token_repo.reindex_waiting_tokens(conn, queue_id)
+        updated_queue = queue_repo.get_queue_by_id(conn, queue_id)
+        invalidate_analytics_cache()
+        serialized_q = serialize_queue(conn, updated_queue)
+        return {**serialized_q, "cancelled_position": original_pos}
+
+
+def restore_cancelled_token(queue_id: int, token_id: int, original_position: Optional[int] = None) -> Dict[str, Any]:
+    """Undo cancellation by restoring a CANCELLED token back to WAITING at its original position."""
+    with get_conn() as conn:
+        q_row = queue_repo.get_queue_by_id(conn, queue_id)
+        if not q_row:
+            raise DomainError(404, "QUEUE_NOT_FOUND", "Queue not found.")
+
+        target = token_repo.get_token_by_id(conn, queue_id, token_id)
+        if not target:
+            raise DomainError(404, "TOKEN_NOT_FOUND", "Token not found in this queue.")
+        if target["status"] != "CANCELLED":
+            raise DomainError(400, "INVALID_RESTORE_STATE", "Only cancelled tokens can be restored.")
+
+        token_repo.reindex_waiting_tokens(conn, queue_id)
+        max_pos = token_repo.get_max_waiting_position(conn, queue_id)
+        insert_pos = max(1, min(original_position or (max_pos + 1), max_pos + 1))
+
+        if insert_pos <= max_pos:
+            token_repo.shift_waiting_positions_for_insert(conn, queue_id, insert_pos)
+        token_repo.restore_token_to_waiting(conn, token_id, insert_pos)
+        token_repo.reindex_waiting_tokens(conn, queue_id)
+
+        updated_queue = queue_repo.get_queue_by_id(conn, queue_id)
+        invalidate_analytics_cache()
+        return serialize_queue(conn, updated_queue)
+
+
+def reorder_token(queue_id: int, token_id: int, target_position: int) -> Dict[str, Any]:
+    """Atomically move a waiting token to target_position (for drag-and-drop)."""
+    with get_conn() as conn:
+        q_row = queue_repo.get_queue_by_id(conn, queue_id)
+        if not q_row:
+            raise DomainError(404, "QUEUE_NOT_FOUND", "Queue not found.")
+
+        target = token_repo.get_token_by_id(conn, queue_id, token_id)
+        if not target:
+            raise DomainError(404, "TOKEN_NOT_FOUND", "Token not found in this queue.")
+        if target["status"] != "WAITING":
+            raise DomainError(400, "INVALID_TOKEN_STATE", "Only waiting tokens can be reordered.")
+
+        waiting = list(token_repo.get_waiting_tokens(conn, queue_id))
+        ids = [t["id"] for t in waiting]
+        if token_id not in ids:
+            raise DomainError(404, "TOKEN_NOT_FOUND", "Token not found in waiting list.")
+
+        ids.remove(token_id)
+        clamped_idx = max(0, min(target_position - 1, len(ids)))
+        ids.insert(clamped_idx, token_id)
+
+        for idx, tid in enumerate(ids, start=1):
+            token_repo.update_token_position(conn, tid, idx)
+
         updated_queue = queue_repo.get_queue_by_id(conn, queue_id)
         invalidate_analytics_cache()
         return serialize_queue(conn, updated_queue)

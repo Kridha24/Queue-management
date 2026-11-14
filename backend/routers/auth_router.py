@@ -45,3 +45,4 @@ def logout() -> Dict[str, bool]:
 @router.get("/me")
 def get_me(manager: Dict[str, Any] = Depends(get_current_manager)) -> Dict[str, Any]:
     return {"manager": manager}
+

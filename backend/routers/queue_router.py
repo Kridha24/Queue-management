@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from backend.core.security import get_current_manager
 from backend.schemas.queue import QueueCreate, QueueUpdate
-from backend.schemas.token import TokenCreate, TokenMoveRequest
+from backend.schemas.token import TokenCreate, TokenMoveRequest, TokenReorderRequest, TokenRestoreRequest
 from backend.services import queue_service
 
 router = APIRouter(prefix="/api", tags=["Queues"])
@@ -70,6 +70,30 @@ def move_token(
     return queue_service.move_token(queue_id=queue_id, token_id=token_id, direction=payload.direction)
 
 
+@router.patch("/queues/{queue_id}/tokens/{token_id}/reorder")
+def reorder_token(
+    queue_id: int,
+    token_id: int,
+    payload: TokenReorderRequest,
+    manager: Dict[str, Any] = Depends(get_current_manager),
+) -> Dict[str, Any]:
+    return queue_service.reorder_token(queue_id=queue_id, token_id=token_id, target_position=payload.target_position)
+
+
+@router.post("/queues/{queue_id}/tokens/{token_id}/restore")
+def restore_token(
+    queue_id: int,
+    token_id: int,
+    payload: TokenRestoreRequest,
+    manager: Dict[str, Any] = Depends(get_current_manager),
+) -> Dict[str, Any]:
+    return queue_service.restore_cancelled_token(
+        queue_id=queue_id,
+        token_id=token_id,
+        original_position=payload.original_position,
+    )
+
+
 @router.post("/queues/{queue_id}/assign-top")
 def assign_top_token(
     queue_id: int,
@@ -110,3 +134,4 @@ async def cancel_token(
 @router.post("/demo/reset")
 def clear_all_data(manager: Dict[str, Any] = Depends(get_current_manager)) -> List[Dict[str, Any]]:
     return queue_service.clear_all_data()
+

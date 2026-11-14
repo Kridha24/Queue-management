@@ -59,3 +59,4 @@ def get_rate_limit_config() -> tuple[int, int]:
     limit = int(os.environ.get("AUTH_RATE_LIMIT", "15"))
     window = int(os.environ.get("AUTH_RATE_WINDOW", "60"))
     return limit, window
+

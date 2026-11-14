@@ -124,3 +124,46 @@ def test_zero_division_analytics_edge_cases(lld_client: TestClient):
     assert qkpis["completion_rate_pct"] == 0.0
     assert qkpis["cancellation_rate_pct"] == 0.0
     assert qkpis["est_clearance_mins"] == 15
+
+
+def test_drag_reorder_and_undo_restore_endpoints(lld_client: TestClient):
+    headers = _auth_headers(lld_client)
+    q = lld_client.post(
+        "/api/queues",
+        json={"name": "Pharmacy", "prefix": "PHM", "counter_label": "Desk 2", "sla_minutes": 8},
+        headers=headers,
+    ).json()
+
+    t1 = lld_client.post(f"/api/queues/{q['id']}/tokens", json={"person_name": "P1"}, headers=headers).json()
+    t2 = lld_client.post(f"/api/queues/{q['id']}/tokens", json={"person_name": "P2"}, headers=headers).json()
+    t3 = lld_client.post(f"/api/queues/{q['id']}/tokens", json={"person_name": "P3"}, headers=headers).json()
+
+    # Drag-and-drop reorder: move P3 (pos 3) -> pos 1
+    reordered = lld_client.patch(
+        f"/api/queues/{q['id']}/tokens/{t3['id']}/reorder",
+        json={"target_position": 1},
+        headers=headers,
+    )
+    assert reordered.status_code == 200
+    assert [t["token_code"] for t in reordered.json()["waiting_tokens"]] == ["PHM-103", "PHM-101", "PHM-102"]
+
+    # Cancel P1 (now at pos 2), then Undo restore back to pos 2
+    cancelled = lld_client.post(
+        f"/api/queues/{q['id']}/tokens/{t1['id']}/cancel",
+        json={"reason": "Accidental"},
+        headers=headers,
+    )
+    assert cancelled.status_code == 200
+    orig_pos = cancelled.json()["cancelled_position"]
+    assert orig_pos == 2
+    assert [t["token_code"] for t in cancelled.json()["waiting_tokens"]] == ["PHM-103", "PHM-102"]
+
+    restored = lld_client.post(
+        f"/api/queues/{q['id']}/tokens/{t1['id']}/restore",
+        json={"original_position": orig_pos},
+        headers=headers,
+    )
+    assert restored.status_code == 200
+    assert [t["token_code"] for t in restored.json()["waiting_tokens"]] == ["PHM-103", "PHM-101", "PHM-102"]
+
+

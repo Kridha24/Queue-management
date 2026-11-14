@@ -16,3 +16,4 @@ class QueueUpdate(BaseModel):
     prefix: Optional[str] = Field(default=None, min_length=1, max_length=6)
     counter_label: Optional[str] = Field(default=None, min_length=1, max_length=50)
     sla_minutes: Optional[int] = Field(default=None, ge=1, le=180)
+

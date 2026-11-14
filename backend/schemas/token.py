@@ -17,3 +17,12 @@ class TokenMoveRequest(BaseModel):
 
 class TokenCancelRequest(BaseModel):
     reason: Optional[str] = Field(default="", max_length=200)
+
+
+class TokenRestoreRequest(BaseModel):
+    original_position: Optional[int] = Field(default=None, ge=1)
+
+
+class TokenReorderRequest(BaseModel):
+    target_position: int = Field(..., ge=1)
+
