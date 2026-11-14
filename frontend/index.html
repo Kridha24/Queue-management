@@ -9,58 +9,80 @@
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+          },
+        },
+      },
+    };
+  </script>
   <style>
     body {
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: #F8FAFC;
+    }
+    .font-mono-code {
+      font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
     }
     .fade-in {
-      animation: fadeIn 0.2s ease-out;
+      animation: fadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
     }
     @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(4px); }
+      from { opacity: 0; transform: translateY(6px); }
       to { opacity: 1; transform: translateY(0); }
     }
   </style>
 </head>
-<body class="bg-slate-50 text-slate-900 antialiased min-h-screen">
+<body class="bg-[#F8FAFC] text-slate-900 antialiased min-h-screen overflow-x-hidden">
 
-  <!-- Toast Container -->
-  <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none"></div>
+  <!-- Bottom-Right Toast Container -->
+  <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2.5 max-w-sm w-full pointer-events-none px-4 sm:px-0"></div>
 
   <!-- LOGIN VIEW -->
-  <div id="login-view" class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950">
-    <div class="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden fade-in">
+  <div id="login-view" class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950">
+    <div class="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200/80 overflow-hidden fade-in">
       <div class="p-8">
-        <div class="flex items-center gap-3 mb-6">
-          <div class="w-11 h-11 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-xl shadow-md shadow-indigo-500/30">
-            Q
+        <div class="flex items-center justify-between mb-6">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-lg shadow-sm shadow-indigo-500/30">
+              Q
+            </div>
+            <div>
+              <h1 class="text-lg font-bold text-slate-900 tracking-tight">QueueFlow Pro</h1>
+              <p class="text-xs text-slate-500 font-medium">Service Operations &amp; Analytics</p>
+            </div>
           </div>
-          <div>
-            <h1 class="text-xl font-bold text-slate-900 tracking-tight">QueueFlow Pro</h1>
-            <p class="text-xs text-slate-500 font-medium">Service Operations &amp; Analytics</p>
-          </div>
+          <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-700">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            Secure
+          </span>
         </div>
 
-        <h2 class="text-lg font-semibold text-slate-800 mb-1">Manager Sign In</h2>
-        <p class="text-sm text-slate-500 mb-6">Access live service queues, token dispatch, and SLA analytics.</p>
+        <h2 class="text-base font-semibold text-slate-900 mb-1">Manager Sign In</h2>
+        <p class="text-xs text-slate-500 mb-5">Access live service queues, token dispatch, and real-time SLA analytics.</p>
 
-        <div id="login-error" class="hidden mb-4 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm font-medium"></div>
+        <div id="login-error" class="hidden mb-4 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium"></div>
 
-        <form id="login-form" class="space-y-4">
+        <form id="login-form" class="space-y-3.5">
           <div>
-            <label for="login-email" class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Email Address</label>
+            <label for="login-email" class="block text-[11px] font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Email Address</label>
             <input id="login-email" type="email" required placeholder="manager@queueflow.io"
-              class="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+              class="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-sm bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition" />
           </div>
           <div>
-            <label for="login-password" class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Password</label>
+            <label for="login-password" class="block text-[11px] font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Password</label>
             <input id="login-password" type="password" required placeholder="••••••••"
-              class="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+              class="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-sm bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition" />
           </div>
           <button type="submit" id="login-submit-btn"
-            class="w-full py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm shadow-sm transition cursor-pointer">
-            Sign In to Dashboard
+            class="w-full py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm shadow-xs transition cursor-pointer">
+            Sign In to Workspace
           </button>
         </form>
 
@@ -68,18 +90,18 @@
           <div id="google-signin-section" class="space-y-2">
             <div id="google-signin-btn-container" class="flex justify-center"></div>
             <div id="google-signin-unconfigured" class="hidden p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-600">
-              <p class="font-semibold text-slate-700 mb-0.5">Google Sign-In Ready</p>
-              <p>Set <code class="font-mono text-indigo-600">GOOGLE_CLIENT_ID</code> in your server environment to enable one-click Google Account login.</p>
+              <p class="font-semibold text-slate-700 mb-0.5">Google OAuth Ready</p>
+              <p>Set <code class="font-mono-code text-indigo-600">GOOGLE_CLIENT_ID</code> on the server to enable one-click Google Sign-In.</p>
             </div>
           </div>
 
           <button type="button" id="demo-login-btn"
-            class="w-full py-2.5 px-4 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-sm border border-slate-300 transition flex items-center justify-center gap-2 cursor-pointer">
+            class="w-full py-2.5 px-4 rounded-lg bg-slate-100 hover:bg-slate-200/80 text-slate-800 font-semibold text-sm border border-slate-200 transition flex items-center justify-center gap-2 cursor-pointer">
             <span>⚡</span>
             <span>Instant Demo Login</span>
           </button>
-          <p class="text-center text-xs text-slate-400">
-            Demo credentials: <code class="text-slate-600 font-mono">manager@queueflow.io</code> / <code class="text-slate-600 font-mono">manager123</code>
+          <p class="text-center text-[11px] text-slate-400">
+            Demo: <code class="text-slate-600 font-mono-code">manager@queueflow.io</code> / <code class="text-slate-600 font-mono-code">manager123</code>
           </p>
         </div>
       </div>
@@ -88,188 +110,250 @@
 
   <!-- MAIN APPLICATION SHELL -->
   <div id="app-view" class="hidden min-h-screen flex flex-col">
-    <!-- Top Header -->
-    <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
-        <div class="flex items-center gap-6">
-          <div class="flex items-center gap-2.5">
-            <div class="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-lg shadow-sm">
+
+    <!-- Sticky Top Navigation Bar (h-16) -->
+    <header class="bg-white/95 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30 h-16">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between gap-3">
+        <div class="flex items-center gap-4 sm:gap-6 min-w-0">
+          <!-- Brand + Pulsing Live Indicator -->
+          <div class="flex items-center gap-2.5 shrink-0">
+            <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-base shadow-xs">
               Q
             </div>
-            <div>
-              <div class="flex items-center gap-2">
-                <span class="font-bold text-slate-900 tracking-tight">QueueFlow Pro</span>
-                <span id="sync-badge" class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  API Synced
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-slate-900 tracking-tight text-sm sm:text-base">QueueFlow Pro</span>
+              <span id="sync-badge" class="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span class="relative flex h-2 w-2">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                 </span>
-              </div>
+                Live
+              </span>
             </div>
           </div>
 
-          <nav class="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+          <!-- Segmented Tab Switcher -->
+          <nav class="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200/70">
             <button type="button" id="tab-btn-operations"
-              class="px-3.5 py-1.5 rounded-md text-sm font-semibold transition cursor-pointer bg-white text-indigo-700 shadow-sm">
-              Queue Operations
+              class="px-3 py-1 rounded-md text-xs sm:text-sm font-semibold transition cursor-pointer bg-white text-slate-900 shadow-xs">
+              Queue Workspace
             </button>
             <button type="button" id="tab-btn-analytics"
-              class="px-3.5 py-1.5 rounded-md text-sm font-semibold transition cursor-pointer text-slate-600 hover:text-slate-900">
+              class="px-3 py-1 rounded-md text-xs sm:text-sm font-semibold transition cursor-pointer text-slate-600 hover:text-slate-900">
               Analytics Dashboard
             </button>
           </nav>
         </div>
 
-        <div class="flex items-center gap-3">
+        <!-- Right Controls -->
+        <div class="flex items-center gap-2.5 shrink-0">
           <button type="button" id="reset-demo-btn"
-            class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition cursor-pointer">
-            <span>🗑</span> Clear All Data
+            class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-xs transition cursor-pointer">
+            <span>Clear All Data</span>
           </button>
-          <div class="hidden md:flex items-center gap-2.5">
-            <img id="manager-avatar" src="" alt="Profile" class="hidden w-8 h-8 rounded-full border border-slate-200 object-cover" />
-            <div class="flex flex-col items-end leading-tight">
+
+          <!-- Manager Avatar Badge -->
+          <div class="hidden md:flex items-center gap-2 pl-2 border-l border-slate-200">
+            <img id="manager-avatar" src="" alt="Profile" class="hidden w-7 h-7 rounded-full border border-slate-200 object-cover" />
+            <div id="manager-initials" class="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200 flex items-center justify-center text-[11px] font-bold">
+              QM
+            </div>
+            <div class="flex flex-col leading-tight">
               <span id="manager-name" class="text-xs font-semibold text-slate-800">Manager</span>
               <span id="manager-email" class="text-[11px] text-slate-500">manager@queueflow.io</span>
             </div>
           </div>
+
           <button type="button" id="logout-btn"
-            class="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition cursor-pointer">
+            class="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition cursor-pointer">
             Logout
           </button>
         </div>
       </div>
     </header>
 
-    <!-- QUEUE OPERATIONS TAB -->
+    <!-- Global 4-Column KPI Strip -->
+    <section class="bg-white border-b border-slate-200">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div class="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
+            <div>
+              <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Active Queues</p>
+              <p id="strip-active-queues" class="font-mono-code text-lg font-bold text-slate-900 mt-0.5">0</p>
+            </div>
+            <span class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs font-bold border border-indigo-100">Q</span>
+          </div>
+          <div class="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
+            <div>
+              <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Total Waiting</p>
+              <p id="strip-total-waiting" class="font-mono-code text-lg font-bold text-amber-600 mt-0.5">0</p>
+            </div>
+            <span class="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center text-xs font-bold border border-amber-100">W</span>
+          </div>
+          <div class="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
+            <div>
+              <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">In Service / Served</p>
+              <p id="strip-service-served" class="font-mono-code text-lg font-bold text-emerald-600 mt-0.5">0 / 0</p>
+            </div>
+            <span class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-xs font-bold border border-emerald-100">S</span>
+          </div>
+          <div class="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
+            <div>
+              <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Mean Wait Time</p>
+              <p id="strip-mean-wait" class="font-mono-code text-lg font-bold text-slate-900 mt-0.5">0.0m</p>
+            </div>
+            <span class="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center text-xs font-bold border border-slate-200">⏱</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- QUEUE WORKSPACE TAB -->
     <main id="operations-tab" class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-        <!-- Sidebar: Queue List -->
-        <aside class="lg:col-span-3 space-y-4">
-          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-            <div class="flex items-center justify-between mb-3">
-              <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500">Service Queues</h2>
+        <!-- Left Sidebar (col-span-4) -->
+        <aside class="lg:col-span-4 space-y-5">
+          <!-- Managed Queues Card -->
+          <div class="bg-white rounded-xl border border-slate-200 shadow-xs p-4">
+            <div class="flex items-center justify-between mb-3.5">
+              <div>
+                <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500">Managed Queues</h2>
+              </div>
               <button type="button" id="new-queue-btn"
-                class="px-2.5 py-1 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition cursor-pointer">
+                class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs transition cursor-pointer">
                 + New Queue
               </button>
             </div>
-            <div id="queue-sidebar-list" class="space-y-2">
+            <div id="queue-sidebar-list" class="space-y-2.5">
               <!-- Populated by JS -->
             </div>
           </div>
 
-          <!-- Issue New Token Form -->
-          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-            <h3 class="text-sm font-bold text-slate-900 mb-1">Issue New Token</h3>
-            <p class="text-xs text-slate-500 mb-4">Appends next sequential token to <span id="form-queue-label" class="font-semibold text-indigo-600">selected queue</span>.</p>
-            <form id="issue-token-form" class="space-y-3">
+          <!-- Issue New Token Card -->
+          <div class="bg-white rounded-xl border border-slate-200 shadow-xs p-5">
+            <div class="flex items-center justify-between gap-2 mb-1">
+              <h3 class="text-sm font-bold text-slate-900">Issue New Token</h3>
+              <span id="next-token-preview" class="font-mono-code text-[11px] font-semibold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">
+                Next: ---
+              </span>
+            </div>
+            <p class="text-xs text-slate-500 mb-4">Appends to <span id="form-queue-label" class="font-semibold text-indigo-600">selected queue</span>.</p>
+
+            <form id="issue-token-form" class="space-y-3.5">
               <div>
-                <label for="token-person-name" class="block text-xs font-semibold text-slate-700 mb-1">Person Name <span class="text-rose-500">*</span></label>
+                <label for="token-person-name" class="block text-xs font-semibold text-slate-700 mb-1">Person Name <span class="text-rose-600">*</span></label>
                 <input id="token-person-name" type="text" required placeholder="e.g., Aditi Sharma"
-                  class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-slate-50/40 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition" />
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label for="token-phone" class="block text-xs font-semibold text-slate-700 mb-1">Phone / ID</label>
+                  <input id="token-phone" type="text" placeholder="+91 98201..."
+                    class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-slate-50/40 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition" />
+                </div>
+                <div>
+                  <label for="token-priority" class="block text-xs font-semibold text-slate-700 mb-1">Visit Type</label>
+                  <select id="token-priority"
+                    class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition">
+                    <option value="Standard">Standard</option>
+                    <option value="Priority">Priority</option>
+                    <option value="Follow-up">Follow-up</option>
+                  </select>
+                </div>
               </div>
               <div>
-                <label for="token-phone" class="block text-xs font-semibold text-slate-700 mb-1">Phone / Contact</label>
-                <input id="token-phone" type="text" placeholder="e.g., +91 98201 55410"
-                  class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-              </div>
-              <div>
-                <label for="token-priority" class="block text-xs font-semibold text-slate-700 mb-1">Priority / Visit Type</label>
-                <select id="token-priority"
-                  class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                  <option value="Standard">Standard</option>
-                  <option value="Priority">Priority</option>
-                  <option value="Follow-up">Follow-up</option>
-                </select>
-              </div>
-              <div>
-                <label for="token-notes" class="block text-xs font-semibold text-slate-700 mb-1">Service Notes</label>
-                <textarea id="token-notes" rows="2" placeholder="Optional reason or counter notes..."
-                  class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+                <label for="token-notes" class="block text-xs font-semibold text-slate-700 mb-1">Service Note (optional)</label>
+                <textarea id="token-notes" rows="2" placeholder="Optional clinical or counter note..."
+                  class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-slate-50/40 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition"></textarea>
               </div>
               <button type="submit" id="issue-token-submit"
-                class="w-full py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm shadow-sm transition cursor-pointer">
-                Generate &amp; Add Token
+                class="w-full py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm shadow-xs transition cursor-pointer">
+                Generate &amp; Issue Token
               </button>
             </form>
           </div>
         </aside>
 
-        <!-- Main Queue Workspace -->
-        <section class="lg:col-span-9 space-y-5">
-          <div id="empty-queue-state" class="hidden bg-white rounded-xl border border-slate-200 shadow-sm p-12 text-center">
-            <div class="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-3 text-xl font-bold">+</div>
+        <!-- Right Main Workspace (col-span-8) -->
+        <section class="lg:col-span-8 space-y-5">
+          <!-- Empty State when 0 queues exist -->
+          <div id="empty-queue-state" class="hidden bg-white rounded-xl border border-slate-200 shadow-xs p-12 text-center">
+            <div class="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center mx-auto mb-3 text-xl font-bold">+</div>
             <h2 class="text-lg font-bold text-slate-900">No Service Queues Yet</h2>
-            <p class="text-sm text-slate-500 mt-1 max-w-md mx-auto">Create your first queue to start issuing tokens, managing waiting lines, and tracking SLA analytics.</p>
+            <p class="text-sm text-slate-500 mt-1 max-w-md mx-auto">Create your first queue to start issuing sequential tokens, managing live waiting lines, and tracking SLA analytics.</p>
             <button type="button" id="empty-create-queue-btn"
-              class="mt-5 px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-sm transition cursor-pointer">
+              class="mt-5 px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-xs transition cursor-pointer">
               + Create First Queue
             </button>
           </div>
 
           <div id="active-queue-workspace" class="space-y-5">
-          <!-- Selected Queue Header -->
-          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <div class="flex items-center gap-2.5 flex-wrap">
-                <h2 id="active-queue-name" class="text-xl font-bold text-slate-900">Loading...</h2>
-                <span id="active-queue-prefix" class="px-2.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold font-mono">---</span>
-                <span id="active-queue-counter" class="px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 text-xs font-semibold">---</span>
-              </div>
-              <p class="text-xs text-slate-500 mt-1.5">
-                Target SLA: <span id="active-queue-sla" class="font-semibold text-slate-700">10 mins/token</span>
-                &bull; Waiting: <span id="active-queue-waiting-count" class="font-semibold text-slate-700">0</span>
-                &bull; Est. Clearance: <span id="active-queue-clearance" class="font-semibold text-slate-700">0 mins</span>
-              </p>
-            </div>
-            <div class="flex items-center gap-2.5 flex-wrap">
-              <button type="button" id="edit-queue-btn"
-                class="px-3.5 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition cursor-pointer">
-                Edit Settings
-              </button>
-              <button type="button" id="assign-top-header-btn"
-                class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-sm font-semibold shadow-sm transition flex items-center gap-2 cursor-pointer">
-                <span>▶</span>
-                <span>Assign Top Token for Service</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- Currently In Service Banner -->
-          <div id="in-service-banner" class="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 shadow-sm">
-            <!-- Populated by JS -->
-          </div>
-
-          <!-- Live Waiting Queue -->
-          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div class="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <!-- Queue Header + One-Click Action -->
+            <div class="bg-white rounded-xl border border-slate-200 shadow-xs p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h3 class="text-sm font-bold text-slate-900">Live Waiting Queue</h3>
-                <p class="text-xs text-slate-500">Ordered by service position. Use ↑ / ↓ to reorder or assign #1 to service.</p>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <h2 id="active-queue-name" class="text-lg font-bold text-slate-900 tracking-tight">Loading...</h2>
+                  <span id="active-queue-prefix" class="font-mono-code px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold">---</span>
+                  <span id="active-queue-counter" class="px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold">---</span>
+                </div>
+                <p class="text-xs text-slate-500 mt-1.5 flex items-center gap-2 flex-wrap">
+                  <span>Target SLA: <strong id="active-queue-sla" class="font-mono-code text-slate-700">10m</strong></span>
+                  <span>&bull;</span>
+                  <span>Waiting: <strong id="active-queue-waiting-count" class="font-mono-code text-slate-700">0</strong></span>
+                  <span>&bull;</span>
+                  <span>Est. Clearance: <strong id="active-queue-clearance" class="font-mono-code text-slate-700">0m</strong></span>
+                </p>
               </div>
-              <div class="relative w-full sm:w-64">
-                <input id="queue-search-input" type="text" placeholder="Search token, name, priority..."
-                  class="w-full pl-3 pr-8 py-1.5 rounded-lg border border-slate-300 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-                <button type="button" id="clear-search-btn" class="hidden absolute right-2 top-1.5 text-slate-400 hover:text-slate-600 text-xs cursor-pointer">✕</button>
+              <div class="flex items-center gap-2 flex-wrap">
+                <button type="button" id="edit-queue-btn"
+                  class="px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-xs transition cursor-pointer">
+                  Edit Settings
+                </button>
+                <button type="button" id="assign-top-header-btn"
+                  class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-semibold shadow-xs transition flex items-center gap-2 cursor-pointer">
+                  <span>▶</span>
+                  <span>Assign Top Token for Service</span>
+                </button>
               </div>
             </div>
-            <div id="waiting-list-container" class="divide-y divide-slate-100">
+
+            <!-- Currently In-Service Spotlight Banner -->
+            <div id="in-service-banner" class="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 shadow-xs">
               <!-- Populated by JS -->
             </div>
-          </div>
 
-          <!-- Recent Service & Cancellation History -->
-          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div class="p-4 border-b border-slate-200 flex items-center justify-between">
-              <div>
-                <h3 class="text-sm font-bold text-slate-900">Recent Service &amp; Cancellation History</h3>
-                <p class="text-xs text-slate-500">Completed and cancelled tokens for this queue.</p>
+            <!-- Waiting Queue List -->
+            <div class="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+              <div class="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div class="flex items-center gap-2.5">
+                  <h3 class="text-sm font-bold text-slate-900">Waiting Queue</h3>
+                  <span id="waiting-list-badge" class="font-mono-code text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">0</span>
+                </div>
+                <div class="relative w-full sm:w-64">
+                  <input id="queue-search-input" type="text" placeholder="Search token or name..."
+                    class="w-full pl-3 pr-8 py-1.5 rounded-lg border border-slate-200 text-xs bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition" />
+                  <button type="button" id="clear-search-btn" class="hidden absolute right-2 top-1.5 text-slate-400 hover:text-slate-600 text-xs cursor-pointer">✕</button>
+                </div>
               </div>
-              <span id="history-count-badge" class="text-xs font-semibold text-slate-500">0 records</span>
+              <div id="waiting-list-container" class="divide-y divide-slate-100">
+                <!-- Populated by JS -->
+              </div>
             </div>
-            <div id="history-list-container" class="divide-y divide-slate-100 max-h-80 overflow-y-auto">
-              <!-- Populated by JS -->
+
+            <!-- Recent History Feed -->
+            <div class="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+              <div class="p-4 border-b border-slate-200 flex items-center justify-between">
+                <div>
+                  <h3 class="text-sm font-bold text-slate-900">Recent History Feed</h3>
+                  <p class="text-xs text-slate-500">Audit trail of served and cancelled tokens.</p>
+                </div>
+                <span id="history-count-badge" class="font-mono-code text-[11px] font-semibold text-slate-500">0 records</span>
+              </div>
+              <div id="history-list-container" class="divide-y divide-slate-100 max-h-80 overflow-y-auto">
+                <!-- Populated by JS -->
+              </div>
             </div>
-          </div>
           </div>
         </section>
       </div>
@@ -277,57 +361,57 @@
 
     <!-- ANALYTICS DASHBOARD TAB -->
     <main id="analytics-tab" class="hidden flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-      <!-- Analytics Header & Scope Filter -->
-      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <!-- Scope Filter Header -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-xs p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 class="text-xl font-bold text-slate-900">Operations Analytics &amp; SLA Trends</h2>
+          <h2 class="text-lg font-bold text-slate-900 tracking-tight">Operations Analytics &amp; SLA Trends</h2>
           <p class="text-xs text-slate-500 mt-0.5">Real-time wait times, queue depth, throughput, and lifecycle distribution.</p>
         </div>
         <div class="flex items-center gap-2.5">
-          <label for="analytics-scope-select" class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Queue Scope:</label>
+          <label for="analytics-scope-select" class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Scope:</label>
           <select id="analytics-scope-select"
-            class="px-3 py-2 rounded-lg border border-slate-300 text-sm font-medium bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            class="px-3 py-2 rounded-lg border border-slate-200 text-sm font-medium bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600">
             <option value="all">All Queues Combined</option>
           </select>
         </div>
       </div>
 
-      <!-- 4 KPI Cards -->
+      <!-- 4 KPI Summary Cards -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-          <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Mean Wait Time</p>
-          <p id="kpi-mean-wait" class="text-3xl font-extrabold text-slate-900 mt-2">0.0 <span class="text-sm font-medium text-slate-500">mins</span></p>
+        <div class="bg-white rounded-xl border border-slate-200 shadow-xs p-5">
+          <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Mean Wait Time</p>
+          <p id="kpi-mean-wait" class="font-mono-code text-2xl font-bold text-slate-900 mt-2">0.0 <span class="text-xs font-sans font-medium text-slate-500">mins</span></p>
           <p id="kpi-peak-wait" class="text-xs text-slate-500 mt-1.5">Peak observed: 0.0 mins</p>
         </div>
-        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-          <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Active Queue Depth</p>
-          <p id="kpi-active-depth" class="text-3xl font-extrabold text-indigo-600 mt-2">0 <span class="text-sm font-medium text-slate-500">waiting</span></p>
+        <div class="bg-white rounded-xl border border-slate-200 shadow-xs p-5">
+          <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Active Queue Depth</p>
+          <p id="kpi-active-depth" class="font-mono-code text-2xl font-bold text-indigo-600 mt-2">0 <span class="text-xs font-sans font-medium text-slate-500">waiting</span></p>
           <p id="kpi-clearance-time" class="text-xs text-slate-500 mt-1.5">Est. clearance: 0 mins</p>
         </div>
-        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-          <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Service Throughput</p>
-          <p id="kpi-served-count" class="text-3xl font-extrabold text-emerald-600 mt-2">0 <span class="text-sm font-medium text-slate-500">served</span></p>
+        <div class="bg-white rounded-xl border border-slate-200 shadow-xs p-5">
+          <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Service Throughput</p>
+          <p id="kpi-served-count" class="font-mono-code text-2xl font-bold text-emerald-600 mt-2">0 <span class="text-xs font-sans font-medium text-slate-500">served</span></p>
           <p id="kpi-completion-rate" class="text-xs text-slate-500 mt-1.5">Completion rate: 0.0%</p>
         </div>
-        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-          <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Cancellation Rate</p>
-          <p id="kpi-cancel-rate" class="text-3xl font-extrabold text-rose-600 mt-2">0.0%</p>
+        <div class="bg-white rounded-xl border border-slate-200 shadow-xs p-5">
+          <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Cancellation Rate</p>
+          <p id="kpi-cancel-rate" class="font-mono-code text-2xl font-bold text-rose-600 mt-2">0.0%</p>
           <p id="kpi-cancel-count" class="text-xs text-slate-500 mt-1.5">0 cancelled tokens</p>
         </div>
       </div>
 
-      <!-- 3 Chart.js Visualizations -->
+      <!-- 3 Interactive Charts (fixed h-72 containers) -->
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div class="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-          <h3 class="text-sm font-bold text-slate-900 mb-1">Hourly Queue Length &amp; Throughput Trend</h3>
-          <p class="text-xs text-slate-500 mb-4">Waiting queue length vs. cumulative tokens served over recent hours.</p>
+        <div class="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-xs p-5">
+          <h3 class="text-sm font-bold text-slate-900 mb-0.5">Hourly Queue Length &amp; Throughput Trend</h3>
+          <p class="text-xs text-slate-500 mb-4">Waiting queue length vs. cumulative tokens served.</p>
           <div class="relative h-72 w-full">
             <canvas id="chart-hourly-trend"></canvas>
           </div>
         </div>
 
-        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-          <h3 class="text-sm font-bold text-slate-900 mb-1">Token Lifecycle Breakdown</h3>
+        <div class="bg-white rounded-xl border border-slate-200 shadow-xs p-5">
+          <h3 class="text-sm font-bold text-slate-900 mb-0.5">Token Lifecycle Breakdown</h3>
           <p class="text-xs text-slate-500 mb-4">Distribution across Waiting, In Service, Served, and Cancelled.</p>
           <div class="relative h-72 w-full">
             <canvas id="chart-lifecycle"></canvas>
@@ -335,24 +419,24 @@
         </div>
       </div>
 
-      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-        <h3 class="text-sm font-bold text-slate-900 mb-1">Average Wait Time vs. Target SLA by Queue</h3>
-        <p class="text-xs text-slate-500 mb-4">Compare observed average wait duration against each queue's target SLA (minutes).</p>
+      <div class="bg-white rounded-xl border border-slate-200 shadow-xs p-5">
+        <h3 class="text-sm font-bold text-slate-900 mb-0.5">Average Wait Time vs. Target SLA by Queue</h3>
+        <p class="text-xs text-slate-500 mb-4">Observed average wait duration compared against each queue's target SLA (minutes).</p>
         <div class="relative h-72 w-full">
           <canvas id="chart-sla-comparison"></canvas>
         </div>
       </div>
 
-      <!-- Per-Queue Operational Breakdown Table -->
-      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <!-- Per-Queue Comparison Table -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
         <div class="p-5 border-b border-slate-200">
-          <h3 class="text-sm font-bold text-slate-900">Per-Queue Operational Breakdown</h3>
-          <p class="text-xs text-slate-500">Side-by-side comparison of all active service queues.</p>
+          <h3 class="text-sm font-bold text-slate-900">Per-Queue Comparison Table</h3>
+          <p class="text-xs text-slate-500">Side-by-side operational metrics across all service queues.</p>
         </div>
         <div class="overflow-x-auto">
           <table class="w-full text-left border-collapse text-sm">
             <thead>
-              <tr class="bg-slate-50 border-b border-slate-200 text-xs font-semibold uppercase tracking-wider text-slate-500">
+              <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                 <th class="py-3 px-4">Queue</th>
                 <th class="py-3 px-4">Counter</th>
                 <th class="py-3 px-4 text-right">SLA</th>
@@ -376,42 +460,42 @@
 
   <!-- MODAL: CREATE / EDIT QUEUE -->
   <div id="queue-modal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-    <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md p-6 fade-in">
+    <div class="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md p-6 fade-in">
       <div class="flex items-center justify-between mb-4">
-        <h3 id="queue-modal-title" class="text-lg font-bold text-slate-900">Create Service Queue</h3>
+        <h3 id="queue-modal-title" class="text-base font-bold text-slate-900">Create Service Queue</h3>
         <button type="button" id="queue-modal-close" class="text-slate-400 hover:text-slate-600 text-lg cursor-pointer">✕</button>
       </div>
       <form id="queue-modal-form" class="space-y-4">
         <input type="hidden" id="queue-modal-id" />
         <div>
-          <label for="queue-modal-name" class="block text-xs font-semibold text-slate-700 mb-1">Queue Name <span class="text-rose-500">*</span></label>
-          <input id="queue-modal-name" type="text" required placeholder="e.g., Cardiology Follow-up"
-            class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          <label for="queue-modal-name" class="block text-xs font-semibold text-slate-700 mb-1">Queue Name <span class="text-rose-600">*</span></label>
+          <input id="queue-modal-name" type="text" required placeholder="e.g., General OPD Consultation"
+            class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600" />
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label for="queue-modal-prefix" class="block text-xs font-semibold text-slate-700 mb-1">Token Prefix <span class="text-rose-500">*</span></label>
-            <input id="queue-modal-prefix" type="text" required maxlength="10" placeholder="e.g., CRD"
-              class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm uppercase font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            <label for="queue-modal-prefix" class="block text-xs font-semibold text-slate-700 mb-1">Token Prefix <span class="text-rose-600">*</span></label>
+            <input id="queue-modal-prefix" type="text" required maxlength="10" placeholder="e.g., OPD"
+              class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm uppercase font-mono-code focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600" />
           </div>
           <div>
-            <label for="queue-modal-sla" class="block text-xs font-semibold text-slate-700 mb-1">Target SLA (mins) <span class="text-rose-500">*</span></label>
+            <label for="queue-modal-sla" class="block text-xs font-semibold text-slate-700 mb-1">Target SLA (mins) <span class="text-rose-600">*</span></label>
             <input id="queue-modal-sla" type="number" required min="1" max="240" value="10"
-              class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm font-mono-code focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600" />
           </div>
         </div>
         <div>
-          <label for="queue-modal-counter" class="block text-xs font-semibold text-slate-700 mb-1">Service Counter Label <span class="text-rose-500">*</span></label>
-          <input id="queue-modal-counter" type="text" required placeholder="e.g., Room 204"
-            class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          <label for="queue-modal-counter" class="block text-xs font-semibold text-slate-700 mb-1">Service Counter Label <span class="text-rose-600">*</span></label>
+          <input id="queue-modal-counter" type="text" required placeholder="e.g., Room 102"
+            class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600" />
         </div>
         <div class="flex items-center justify-end gap-2 pt-2">
           <button type="button" id="queue-modal-cancel"
-            class="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 cursor-pointer">
+            class="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-50 cursor-pointer">
             Cancel
           </button>
           <button type="submit"
-            class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold cursor-pointer">
+            class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs cursor-pointer">
             Save Queue
           </button>
         </div>
@@ -421,22 +505,22 @@
 
   <!-- MODAL: CANCEL TOKEN CONFIRMATION -->
   <div id="cancel-modal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-    <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md p-6 fade-in">
-      <h3 class="text-lg font-bold text-slate-900 mb-1">Cancel Waiting Token</h3>
-      <p id="cancel-modal-subtitle" class="text-sm text-slate-600 mb-4">Are you sure you want to cancel this token?</p>
+    <div class="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md p-6 fade-in">
+      <h3 class="text-base font-bold text-slate-900 mb-1">Cancel Waiting Token</h3>
+      <p id="cancel-modal-subtitle" class="text-xs text-slate-600 mb-4">Are you sure you want to cancel this token?</p>
       <form id="cancel-modal-form" class="space-y-4">
         <div>
           <label for="cancel-reason-input" class="block text-xs font-semibold text-slate-700 mb-1">Cancellation Reason (optional)</label>
           <input id="cancel-reason-input" type="text" placeholder="e.g., Patient left, rescheduled, duplicate..."
-            class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500" />
+            class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-600" />
         </div>
         <div class="flex items-center justify-end gap-2 pt-1">
           <button type="button" id="cancel-modal-dismiss"
-            class="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 cursor-pointer">
+            class="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-50 cursor-pointer">
             Keep in Queue
           </button>
           <button type="submit"
-            class="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold cursor-pointer">
+            class="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-xs cursor-pointer">
             Confirm Cancellation
           </button>
         </div>
@@ -446,16 +530,16 @@
 
   <!-- MODAL: CLEAR ALL DATA CONFIRMATION -->
   <div id="reset-modal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-    <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-sm p-6 fade-in">
-      <h3 class="text-lg font-bold text-slate-900 mb-1">Clear All Queue Data?</h3>
-      <p class="text-sm text-slate-600 mb-5">This will permanently remove all queues and tokens so you can start completely fresh.</p>
+    <div class="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-sm p-6 fade-in">
+      <h3 class="text-base font-bold text-slate-900 mb-1">Clear All Queue Data?</h3>
+      <p class="text-xs text-slate-600 mb-5">This will permanently remove all queues and tokens so you can start completely fresh.</p>
       <div class="flex items-center justify-end gap-2">
         <button type="button" id="reset-modal-cancel"
-          class="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 cursor-pointer">
+          class="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-50 cursor-pointer">
           Cancel
         </button>
         <button type="button" id="reset-modal-confirm"
-          class="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold cursor-pointer">
+          class="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-xs cursor-pointer">
           Clear All Data
         </button>
       </div>
@@ -465,4 +549,3 @@
   <script src="./app.js"></script>
 </body>
 </html>
-

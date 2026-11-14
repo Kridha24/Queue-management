@@ -81,13 +81,22 @@
     const badge = document.getElementById("sync-badge");
     if (!badge) return;
     if (state.offlineMode) {
-      badge.textContent = "Local Storage Mode";
+      badge.innerHTML = `
+        <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+        Local Mode
+      `;
       badge.className =
-        "text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200";
+        "inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200";
     } else {
-      badge.textContent = "API Synced";
+      badge.innerHTML = `
+        <span class="relative flex h-2 w-2">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+        </span>
+        Live
+      `;
       badge.className =
-        "text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200";
+        "inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200";
     }
   }
 
@@ -1033,7 +1042,45 @@
   // Rendering — Queue Operations
   // ---------------------------------------------------------------------------
 
+  function renderGlobalKpiStrip() {
+    const activeQueues = state.queues.length;
+    let totalWaiting = 0;
+    let totalInService = 0;
+    let totalServed = 0;
+    const waits = [];
+    const nowMs = Date.now();
+
+    for (const q of state.queues) {
+      const waiting = q.waiting_tokens || [];
+      totalWaiting += waiting.length;
+      if (q.in_service_token) {
+        totalInService += 1;
+        if (q.in_service_token.wait_duration_mins !== null && q.in_service_token.wait_duration_mins !== undefined) {
+          waits.push(Number(q.in_service_token.wait_duration_mins));
+        }
+      }
+      for (const t of waiting) {
+        if (t.created_at) {
+          waits.push(Math.max(0, (nowMs - new Date(t.created_at).getTime()) / 60000));
+        }
+      }
+      for (const t of q.history_tokens || []) {
+        if (t.status === "SERVED") totalServed += 1;
+        if (t.wait_duration_mins !== null && t.wait_duration_mins !== undefined) {
+          waits.push(Number(t.wait_duration_mins));
+        }
+      }
+    }
+
+    const meanWait = waits.length ? (waits.reduce((a, b) => a + b, 0) / waits.length).toFixed(1) : "0.0";
+    document.getElementById("strip-active-queues").textContent = String(activeQueues);
+    document.getElementById("strip-total-waiting").textContent = String(totalWaiting);
+    document.getElementById("strip-service-served").textContent = `${totalInService} / ${totalServed}`;
+    document.getElementById("strip-mean-wait").textContent = `${meanWait}m`;
+  }
+
   function renderAll() {
+    renderGlobalKpiStrip();
     renderSidebar();
     renderActiveQueueWorkspace();
     renderAnalyticsScopeDropdown();
@@ -1045,7 +1092,7 @@
   function renderSidebar() {
     const container = document.getElementById("queue-sidebar-list");
     if (!state.queues.length) {
-      container.innerHTML = `<p class="text-xs text-slate-400 py-4 text-center">No queues yet. Create one above.</p>`;
+      container.innerHTML = `<p class="text-xs text-slate-400 py-6 text-center">No queues yet. Click <strong>+ New Queue</strong> to begin.</p>`;
       return;
     }
 
@@ -1053,22 +1100,27 @@
       .map((q) => {
         const isActive = q.id === state.activeQueueId;
         const waitingCount = (q.waiting_tokens || []).length;
+        const servingCode = q.in_service_token ? q.in_service_token.token_code : null;
         return `
           <button type="button" data-queue-id="${q.id}"
-            class="queue-select-btn w-full text-left p-3 rounded-xl border transition cursor-pointer ${
+            class="queue-select-btn w-full text-left p-3.5 rounded-xl border transition cursor-pointer ${
               isActive
-                ? "bg-indigo-50 border-indigo-300 shadow-xs"
-                : "bg-white border-slate-200 hover:bg-slate-50"
+                ? "bg-indigo-50/70 border-indigo-400 shadow-xs ring-1 ring-indigo-500/20"
+                : "bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300"
             }">
             <div class="flex items-center justify-between gap-2">
-              <span class="text-sm font-bold ${isActive ? "text-indigo-900" : "text-slate-800"} truncate">${escapeHtml(q.name)}</span>
-              <span class="px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                waitingCount > 0 ? "bg-indigo-600 text-white" : "bg-slate-200 text-slate-600"
+              <span class="text-sm font-bold ${isActive ? "text-indigo-950" : "text-slate-800"} truncate">${escapeHtml(q.name)}</span>
+              <span class="font-mono-code px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                waitingCount > 0 ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600 border border-slate-200"
               }">${waitingCount}</span>
             </div>
-            <div class="flex items-center justify-between mt-1 text-[11px] text-slate-500">
-              <span class="font-mono font-semibold">${escapeHtml(q.prefix)} &bull; ${escapeHtml(q.counter_label)}</span>
-              <span>SLA ${q.sla_minutes}m</span>
+            <div class="flex items-center justify-between mt-1.5 text-[11px] text-slate-500 gap-2">
+              <span class="font-mono-code font-semibold text-slate-600">${escapeHtml(q.prefix)} &bull; ${escapeHtml(q.counter_label)}</span>
+              ${
+                servingCode
+                  ? `<span class="font-mono-code font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">Serving ${escapeHtml(servingCode)}</span>`
+                  : `<span class="text-slate-400">Idle</span>`
+              }
             </div>
           </button>
         `;
@@ -1086,7 +1138,7 @@
 
   function priorityBadgeHtml(priority) {
     if (priority === "Priority") {
-      return `<span class="px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 text-[11px] font-bold">Priority</span>`;
+      return `<span class="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-bold">Priority</span>`;
     }
     if (priority === "Follow-up") {
       return `<span class="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-semibold">Follow-up</span>`;
@@ -1099,11 +1151,13 @@
     const emptyState = document.getElementById("empty-queue-state");
     const activeWorkspace = document.getElementById("active-queue-workspace");
     const issueBtn = document.getElementById("issue-token-submit");
+    const previewBadge = document.getElementById("next-token-preview");
 
     if (!q) {
       emptyState.classList.remove("hidden");
       activeWorkspace.classList.add("hidden");
       document.getElementById("form-queue-label").textContent = "create a queue first";
+      if (previewBadge) previewBadge.textContent = "Next: ---";
       issueBtn.disabled = true;
       issueBtn.classList.add("opacity-50", "cursor-not-allowed");
       return;
@@ -1117,13 +1171,18 @@
     const waiting = q.waiting_tokens || [];
     const estClearance = waiting.length * q.sla_minutes;
 
+    if (previewBadge) {
+      previewBadge.textContent = `Next: ${q.prefix}-${q.next_sequence || 101}`;
+    }
     document.getElementById("form-queue-label").textContent = q.name;
     document.getElementById("active-queue-name").textContent = q.name;
     document.getElementById("active-queue-prefix").textContent = q.prefix;
     document.getElementById("active-queue-counter").textContent = q.counter_label;
-    document.getElementById("active-queue-sla").textContent = `${q.sla_minutes} mins/token`;
+    document.getElementById("active-queue-sla").textContent = `${q.sla_minutes}m`;
     document.getElementById("active-queue-waiting-count").textContent = String(waiting.length);
-    document.getElementById("active-queue-clearance").textContent = `${estClearance} mins`;
+    document.getElementById("active-queue-clearance").textContent = `${estClearance}m`;
+    const listBadge = document.getElementById("waiting-list-badge");
+    if (listBadge) listBadge.textContent = String(waiting.length);
 
     const assignTopHeaderBtn = document.getElementById("assign-top-header-btn");
     assignTopHeaderBtn.disabled = waiting.length === 0;
@@ -1208,11 +1267,11 @@
           const estServiceMins = (t.position - 1) * q.sla_minutes + (activeToken ? Math.ceil(q.sla_minutes / 2) : 0);
 
           return `
-            <div class="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/70 transition ${
-              isFirst ? "bg-indigo-50/30" : ""
+            <div class="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/80 transition fade-in ${
+              isFirst ? "bg-indigo-50/35" : ""
             }">
               <div class="flex items-start gap-3.5">
-                <div class="w-9 h-9 rounded-lg flex items-center justify-center font-bold text-sm shrink-0 ${
+                <div class="font-mono-code w-9 h-9 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
                   isFirst
                     ? "bg-indigo-600 text-white shadow-xs"
                     : "bg-slate-100 text-slate-700 border border-slate-200"
@@ -1221,14 +1280,14 @@
                 </div>
                 <div>
                   <div class="flex items-center gap-2 flex-wrap">
-                    <span class="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-900 text-white">${escapeHtml(t.token_code)}</span>
+                    <span class="font-mono-code text-xs font-bold px-2 py-0.5 rounded-md bg-slate-900 text-white">${escapeHtml(t.token_code)}</span>
                     <span class="text-sm font-bold text-slate-900">${escapeHtml(t.person_name)}</span>
                     ${priorityBadgeHtml(t.priority)}
                   </div>
                   <div class="text-xs text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
-                    <span>Waiting: <strong class="text-slate-700">${waitMins} min</strong></span>
+                    <span>Wait: <strong class="font-mono-code text-slate-700">${waitMins.toFixed(1)}m</strong></span>
                     <span>&bull;</span>
-                    <span>Est. service: <strong class="text-slate-700">~${estServiceMins} min</strong></span>
+                    <span>Est. call: <strong class="font-mono-code text-slate-700">~${estServiceMins}m</strong></span>
                     ${t.phone ? `<span>&bull; ${escapeHtml(t.phone)}</span>` : ""}
                     ${t.notes ? `<span>&bull; <em>"${escapeHtml(t.notes)}"</em></span>` : ""}
                   </div>
@@ -1536,16 +1595,16 @@
       opsTab.classList.remove("hidden");
       anaTab.classList.add("hidden");
       opsBtn.className =
-        "px-3.5 py-1.5 rounded-md text-sm font-semibold transition cursor-pointer bg-white text-indigo-700 shadow-sm";
+        "px-3 py-1 rounded-md text-xs sm:text-sm font-semibold transition cursor-pointer bg-white text-slate-900 shadow-xs";
       anaBtn.className =
-        "px-3.5 py-1.5 rounded-md text-sm font-semibold transition cursor-pointer text-slate-600 hover:text-slate-900";
+        "px-3 py-1 rounded-md text-xs sm:text-sm font-semibold transition cursor-pointer text-slate-600 hover:text-slate-900";
     } else {
       opsTab.classList.add("hidden");
       anaTab.classList.remove("hidden");
       anaBtn.className =
-        "px-3.5 py-1.5 rounded-md text-sm font-semibold transition cursor-pointer bg-white text-indigo-700 shadow-sm";
+        "px-3 py-1 rounded-md text-xs sm:text-sm font-semibold transition cursor-pointer bg-white text-slate-900 shadow-xs";
       opsBtn.className =
-        "px-3.5 py-1.5 rounded-md text-sm font-semibold transition cursor-pointer text-slate-600 hover:text-slate-900";
+        "px-3 py-1 rounded-md text-xs sm:text-sm font-semibold transition cursor-pointer text-slate-600 hover:text-slate-900";
       renderAnalyticsDashboard();
     }
   }
@@ -1587,15 +1646,23 @@
   async function enterApp() {
     document.getElementById("login-view").classList.add("hidden");
     document.getElementById("app-view").classList.remove("hidden");
-    document.getElementById("manager-name").textContent = state.session?.manager?.name || "Manager";
+    const mgrName = state.session?.manager?.name || "Manager";
+    document.getElementById("manager-name").textContent = mgrName;
     document.getElementById("manager-email").textContent = state.session?.manager?.email || "";
     const avatarEl = document.getElementById("manager-avatar");
+    const initialsEl = document.getElementById("manager-initials");
     const avatarUrl = state.session?.manager?.avatar_url;
     if (avatarUrl) {
       avatarEl.src = avatarUrl;
       avatarEl.classList.remove("hidden");
+      if (initialsEl) initialsEl.classList.add("hidden");
     } else {
       avatarEl.classList.add("hidden");
+      if (initialsEl) {
+        const parts = mgrName.replace(/^Dr\.\s*/i, "").trim().split(/\s+/);
+        initialsEl.textContent = parts.slice(0, 2).map((p) => p[0]?.toUpperCase() || "").join("") || "QM";
+        initialsEl.classList.remove("hidden");
+      }
     }
     updateSyncBadge();
     await loadQueues();
