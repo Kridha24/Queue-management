@@ -417,16 +417,14 @@
   function getLocalQueues() {
     const raw = localStorage.getItem(STORAGE_KEYS.LOCAL_DB);
     if (!raw) {
-      const seed = buildDemoLocalQueues();
-      localStorage.setItem(STORAGE_KEYS.LOCAL_DB, JSON.stringify(seed));
-      return seed;
+      localStorage.setItem(STORAGE_KEYS.LOCAL_DB, JSON.stringify([]));
+      return [];
     }
     try {
       return JSON.parse(raw);
     } catch {
-      const seed = buildDemoLocalQueues();
-      localStorage.setItem(STORAGE_KEYS.LOCAL_DB, JSON.stringify(seed));
-      return seed;
+      localStorage.setItem(STORAGE_KEYS.LOCAL_DB, JSON.stringify([]));
+      return [];
     }
   }
 
@@ -957,19 +955,19 @@
     }
   }
 
-  async function resetDemoData() {
+  async function clearAllData() {
     if (state.busy) return;
     state.busy = true;
     try {
       if (!state.offlineMode) {
-        await apiRequest("/api/reset-demo", { method: "POST" });
+        await apiRequest("/api/clear-data", { method: "POST" });
       } else {
-        saveLocalQueues(buildDemoLocalQueues());
+        saveLocalQueues([]);
       }
       state.activeQueueId = null;
       localStorage.removeItem(STORAGE_KEYS.ACTIVE_QUEUE_ID);
       await loadQueues();
-      showToast("Sample data restored.", "success");
+      showToast("All queue data cleared.", "info");
     } catch (err) {
       showToast(err.message, "error");
     } finally {
@@ -1044,7 +1042,23 @@
 
   function renderActiveQueueWorkspace() {
     const q = getActiveQueue();
-    if (!q) return;
+    const emptyState = document.getElementById("empty-queue-state");
+    const activeWorkspace = document.getElementById("active-queue-workspace");
+    const issueBtn = document.getElementById("issue-token-submit");
+
+    if (!q) {
+      emptyState.classList.remove("hidden");
+      activeWorkspace.classList.add("hidden");
+      document.getElementById("form-queue-label").textContent = "create a queue first";
+      issueBtn.disabled = true;
+      issueBtn.classList.add("opacity-50", "cursor-not-allowed");
+      return;
+    }
+
+    emptyState.classList.add("hidden");
+    activeWorkspace.classList.remove("hidden");
+    issueBtn.disabled = false;
+    issueBtn.classList.remove("opacity-50", "cursor-not-allowed");
 
     const waiting = q.waiting_tokens || [];
     const estClearance = waiting.length * q.sla_minutes;
@@ -1420,6 +1434,16 @@
 
     // Per-Queue Breakdown Table
     const tbody = document.getElementById("analytics-breakdown-tbody");
+    if (!queue_breakdown.length) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="10" class="py-8 px-4 text-center text-xs text-slate-400">
+            No queues created yet. Create a queue and issue tokens to see operational metrics.
+          </td>
+        </tr>
+      `;
+      return;
+    }
     tbody.innerHTML = queue_breakdown
       .map(
         (row) => `
@@ -1538,6 +1562,7 @@
 
     // Queue Creation & Editing
     document.getElementById("new-queue-btn").addEventListener("click", () => openQueueModal(null));
+    document.getElementById("empty-create-queue-btn").addEventListener("click", () => openQueueModal(null));
     document.getElementById("edit-queue-btn").addEventListener("click", () => {
       const q = getActiveQueue();
       if (q) openQueueModal(q);
@@ -1618,7 +1643,7 @@
     });
     document.getElementById("reset-modal-confirm").addEventListener("click", async () => {
       document.getElementById("reset-modal").classList.add("hidden");
-      await resetDemoData();
+      await clearAllData();
     });
 
     // Analytics Scope Filter
@@ -1662,3 +1687,4 @@
 
   document.addEventListener("DOMContentLoaded", init);
 })();
+

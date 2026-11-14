@@ -62,13 +62,10 @@ def test_authentication_and_demo_seed(client: TestClient):
     assert me.status_code == 200
     assert me.json()["manager"]["email"] == "manager@queueflow.io"
 
-    # Initial seeded queues exist
+    # Fresh database starts with 0 queues (all data comes from user input)
     queues_res = client.get("/api/queues", headers=headers)
     assert queues_res.status_code == 200
-    queues = queues_res.json()
-    assert len(queues) == 3
-    prefixes = {q["prefix"] for q in queues}
-    assert prefixes == {"OPD", "PHM", "LAB"}
+    assert queues_res.json() == []
 
 
 def test_full_queue_lifecycle_and_analytics(client: TestClient):
@@ -219,7 +216,8 @@ def test_full_queue_lifecycle_and_analytics(client: TestClient):
     assert len(ana["hourly_trend"]) == 6
     assert len(ana["sla_comparison"]) == 1
 
-    # 10. Reset demo data
-    reset_res = client.post("/api/reset-demo", headers=headers)
-    assert reset_res.status_code == 200
-    assert len(reset_res.json()) == 3
+    # 10. Clear all data
+    clear_res = client.post("/api/clear-data", headers=headers)
+    assert clear_res.status_code == 200
+    assert clear_res.json() == []
+

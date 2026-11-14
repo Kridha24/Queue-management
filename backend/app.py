@@ -153,9 +153,7 @@ def init_db() -> None:
                 ),
             )
 
-        queue_count = conn.execute("SELECT COUNT(*) AS cnt FROM queues").fetchone()["cnt"]
-        if queue_count == 0:
-            seed_demo_data(conn)
+        # Start with an empty database so all queues and tokens come from user input.
 
 
 def seed_demo_data(conn: sqlite3.Connection) -> None:
@@ -984,6 +982,14 @@ def get_analytics(
         },
         "queue_breakdown": queue_breakdown,
     }
+
+
+@app.post("/api/clear-data")
+def clear_all_data(manager: Dict[str, Any] = Depends(get_current_manager)) -> List[Dict[str, Any]]:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM tokens;")
+        conn.execute("DELETE FROM queues;")
+        return []
 
 
 @app.post("/api/reset-demo")
