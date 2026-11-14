@@ -2,6 +2,7 @@
 
 import os
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -17,8 +18,9 @@ def client(tmp_path):
     db_file = tmp_path / "test_queueflow.db"
     os.environ["QUEUEFLOW_DB_PATH"] = str(db_file)
 
-    from backend.app import app, init_db
+    from backend.app import _auth_attempts, app, init_db
 
+    _auth_attempts.clear()
     init_db()
     with TestClient(app) as test_client:
         yield test_client
@@ -244,6 +246,8 @@ def test_google_auth_integration(client: TestClient, monkeypatch):
         def json(self):
             return {
                 "aud": "test-client-id.apps.googleusercontent.com",
+                "iss": "https://accounts.google.com",
+                "exp": str(int(time.time()) + 3600),
                 "sub": "google-sub-998877",
                 "email": "alex.google@example.com",
                 "email_verified": "true",
@@ -265,5 +269,27 @@ def test_google_auth_integration(client: TestClient, monkeypatch):
     me_res = client.get("/api/auth/me", headers={"Authorization": f"Bearer {data['token']}"})
     assert me_res.status_code == 200
     assert me_res.json()["manager"]["email"] == "alex.google@example.com"
+
+    # Domain restriction blocks unauthorized domain
+    monkeypatch.setenv("ALLOWED_GOOGLE_DOMAINS", "company.org")
+    blocked_res = client.post("/api/auth/google", json={"credential": "valid-google-id-token"})
+    assert blocked_res.status_code == 403
+    monkeypatch.delenv("ALLOWED_GOOGLE_DOMAINS", raising=False)
+
+
+def test_security_headers_and_rate_limiting(client: TestClient):
+    res = client.get("/api/health")
+    assert res.status_code == 200
+    assert res.headers.get("X-Content-Type-Options") == "nosniff"
+    assert res.headers.get("X-Frame-Options") == "DENY"
+    assert res.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
+
+    # Trigger rate limit (15 allowed, 16th returns 429)
+    for _ in range(15):
+        r = client.post("/api/auth/login", json={"email": "manager@queueflow.io", "password": "wrong"})
+        assert r.status_code == 401
+    limited = client.post("/api/auth/login", json={"email": "manager@queueflow.io", "password": "wrong"})
+    assert limited.status_code == 429
+
 
 

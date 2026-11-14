@@ -6,9 +6,11 @@ import hashlib
 import os
 import secrets
 import sqlite3
+from collections import defaultdict
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import time
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
@@ -207,6 +209,7 @@ def init_db() -> None:
                 token TEXT PRIMARY KEY,
                 manager_id INTEGER NOT NULL,
                 created_at TEXT NOT NULL,
+                expires_at TEXT,
                 FOREIGN KEY (manager_id) REFERENCES managers(id) ON DELETE CASCADE
             );
 
@@ -244,6 +247,7 @@ def init_db() -> None:
         if pg_url:
             conn.execute("ALTER TABLE managers ADD COLUMN IF NOT EXISTS google_sub TEXT DEFAULT ''")
             conn.execute("ALTER TABLE managers ADD COLUMN IF NOT EXISTS avatar_url TEXT DEFAULT ''")
+            conn.execute("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS expires_at TEXT")
         else:
             existing_cols = {
                 row["name"] for row in conn.execute("PRAGMA table_info(managers)").fetchall()
@@ -252,6 +256,11 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE managers ADD COLUMN google_sub TEXT DEFAULT ''")
             if "avatar_url" not in existing_cols:
                 conn.execute("ALTER TABLE managers ADD COLUMN avatar_url TEXT DEFAULT ''")
+            session_cols = {
+                row["name"] for row in conn.execute("PRAGMA table_info(sessions)").fetchall()
+            }
+            if "expires_at" not in session_cols:
+                conn.execute("ALTER TABLE sessions ADD COLUMN expires_at TEXT")
 
         existing_manager = conn.execute(
             "SELECT id FROM managers WHERE email = ?", (DEMO_EMAIL,)
@@ -461,6 +470,43 @@ class TokenCancelRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+SESSION_TTL_HOURS = 24
+AUTH_RATE_LIMIT_MAX = 15
+AUTH_RATE_LIMIT_WINDOW_SECS = 60
+_auth_attempts: Dict[str, List[float]] = defaultdict(list)
+
+
+def check_auth_rate_limit(request: Request) -> None:
+    """Sliding-window rate limiter on authentication endpoints."""
+    forwarded = request.headers.get("x-forwarded-for", "")
+    client_ip = forwarded.split(",")[0].strip() if forwarded else (
+        request.client.host if request.client else "unknown"
+    )
+    now = time.monotonic()
+    cutoff = now - AUTH_RATE_LIMIT_WINDOW_SECS
+    recent = [ts for ts in _auth_attempts[client_ip] if ts > cutoff]
+    if len(recent) >= AUTH_RATE_LIMIT_MAX:
+        _auth_attempts[client_ip] = recent
+        raise HTTPException(
+            status_code=429,
+            detail="Too many authentication attempts. Please wait a minute and try again.",
+            headers={"Retry-After": str(AUTH_RATE_LIMIT_WINDOW_SECS)},
+        )
+    recent.append(now)
+    _auth_attempts[client_ip] = recent
+
+
+def create_session(conn, manager_id: int) -> str:
+    session_token = secrets.token_urlsafe(32)
+    now = utc_now()
+    expires = now + timedelta(hours=SESSION_TTL_HOURS)
+    conn.execute(
+        "INSERT INTO sessions (token, manager_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+        (session_token, manager_id, iso_utc(now), iso_utc(expires)),
+    )
+    return session_token
+
+
 def extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
     if not authorization:
         return None
@@ -478,16 +524,28 @@ def get_current_manager(authorization: Optional[str] = Header(default=None)) -> 
     with get_conn() as conn:
         row = conn.execute(
             """
-            SELECT m.id, m.name, m.email, m.role, m.avatar_url
+            SELECT m.id, m.name, m.email, m.role, m.avatar_url, s.expires_at
             FROM sessions s
             JOIN managers m ON m.id = s.manager_id
             WHERE s.token = ?
             """,
             (token,),
         ).fetchone()
-    if not row:
-        raise HTTPException(status_code=401, detail="Invalid or expired session.")
-    return dict(row)
+        if not row:
+            raise HTTPException(status_code=401, detail="Invalid or expired session.")
+
+        expires_dt = parse_iso(row["expires_at"])
+        if expires_dt and expires_dt < utc_now():
+            conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+            raise HTTPException(status_code=401, detail="Session expired. Please sign in again.")
+
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "email": row["email"],
+        "role": row["role"],
+        "avatar_url": row["avatar_url"] or "",
+    }
 
 
 def serialize_token(row: sqlite3.Row) -> Dict[str, Any]:
@@ -580,13 +638,32 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="QueueFlow Pro API", version="1.0.0", lifespan=lifespan)
 
+cors_origins_env = os.environ.get("CORS_ORIGINS", "").strip()
+allowed_origins = (
+    [o.strip() for o in cors_origins_env.split(",") if o.strip()]
+    if cors_origins_env
+    else ["*"]
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if request.headers.get("x-forwarded-proto") == "https" or request.url.scheme == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 
 @app.get("/api/health")
@@ -603,7 +680,8 @@ def get_auth_config() -> Dict[str, str]:
 
 
 @app.post("/api/auth/google")
-def google_login(payload: GoogleLoginRequest) -> Dict[str, Any]:
+def google_login(payload: GoogleLoginRequest, request: Request) -> Dict[str, Any]:
+    check_auth_rate_limit(request)
     google_client_id = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
     if not google_client_id:
         raise HTTPException(
@@ -627,6 +705,17 @@ def google_login(payload: GoogleLoginRequest) -> Dict[str, Any]:
     if info.get("aud") != google_client_id:
         raise HTTPException(status_code=401, detail="Google token audience mismatch.")
 
+    issuer = str(info.get("iss", "")).strip()
+    if issuer not in ("accounts.google.com", "https://accounts.google.com"):
+        raise HTTPException(status_code=401, detail="Invalid Google token issuer.")
+
+    try:
+        exp_ts = int(info.get("exp", 0))
+    except (TypeError, ValueError):
+        exp_ts = 0
+    if exp_ts <= int(utc_now().timestamp()):
+        raise HTTPException(status_code=401, detail="Google ID token has expired.")
+
     email_verified = str(info.get("email_verified", "")).lower() == "true"
     email = str(info.get("email", "")).strip().lower()
     sub = str(info.get("sub", "")).strip()
@@ -635,6 +724,18 @@ def google_login(payload: GoogleLoginRequest) -> Dict[str, Any]:
 
     if not email or not email_verified or not sub:
         raise HTTPException(status_code=401, detail="Google account email is not verified.")
+
+    allowed_emails_raw = os.environ.get("ALLOWED_GOOGLE_EMAILS", "").strip()
+    allowed_domains_raw = os.environ.get("ALLOWED_GOOGLE_DOMAINS", "").strip()
+    if allowed_emails_raw or allowed_domains_raw:
+        allowed_emails = {e.strip().lower() for e in allowed_emails_raw.split(",") if e.strip()}
+        allowed_domains = {d.strip().lower() for d in allowed_domains_raw.split(",") if d.strip()}
+        domain = email.split("@", 1)[1] if "@" in email else ""
+        if email not in allowed_emails and domain not in allowed_domains:
+            raise HTTPException(
+                status_code=403,
+                detail="This Google account is not authorized for QueueFlow Pro.",
+            )
 
     with get_conn() as conn:
         manager = conn.execute(
@@ -668,11 +769,7 @@ def google_login(payload: GoogleLoginRequest) -> Dict[str, Any]:
             manager_id = cur.lastrowid
             role = "Queue Operations Manager (Google)"
 
-        session_token = secrets.token_urlsafe(32)
-        conn.execute(
-            "INSERT INTO sessions (token, manager_id, created_at) VALUES (?, ?, ?)",
-            (session_token, manager_id, iso_utc()),
-        )
+        session_token = create_session(conn, manager_id)
         return {
             "token": session_token,
             "manager": {
@@ -686,7 +783,8 @@ def google_login(payload: GoogleLoginRequest) -> Dict[str, Any]:
 
 
 @app.post("/api/auth/login")
-def login(payload: LoginRequest) -> Dict[str, Any]:
+def login(payload: LoginRequest, request: Request) -> Dict[str, Any]:
+    check_auth_rate_limit(request)
     email = payload.email.strip().lower()
     if not email or not payload.password:
         raise HTTPException(status_code=400, detail="Email and password are required.")
@@ -699,11 +797,7 @@ def login(payload: LoginRequest) -> Dict[str, Any]:
         if not manager or not verify_password(payload.password, manager["password_hash"]):
             raise HTTPException(status_code=401, detail="Invalid email or password.")
 
-        session_token = secrets.token_urlsafe(32)
-        conn.execute(
-            "INSERT INTO sessions (token, manager_id, created_at) VALUES (?, ?, ?)",
-            (session_token, manager["id"], iso_utc()),
-        )
+        session_token = create_session(conn, manager["id"])
         return {
             "token": session_token,
             "manager": {
