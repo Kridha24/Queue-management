@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
+FRONTEND_DIST_DIR = FRONTEND_DIR / "dist"
 DEFAULT_DB_PATH = BASE_DIR / "backend" / "queueflow.db"
 
 DEMO_EMAIL = "manager@queueflow.io"
@@ -1483,24 +1484,21 @@ def reset_demo(manager: Dict[str, Any] = Depends(get_current_manager)) -> List[D
 
 
 # ---------------------------------------------------------------------------
-# Static Frontend Serving
+# Static Frontend Serving (React Vite dist + fallback)
 # ---------------------------------------------------------------------------
 
-if FRONTEND_DIR.exists():
+if (FRONTEND_DIST_DIR / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST_DIR / "assets")), name="assets")
+elif FRONTEND_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
 
 @app.get("/", response_class=HTMLResponse)
 def serve_index():
+    dist_index = FRONTEND_DIST_DIR / "index.html"
+    if dist_index.exists():
+        return FileResponse(str(dist_index))
     index_file = FRONTEND_DIR / "index.html"
     if not index_file.exists():
         return HTMLResponse("<h1>QueueFlow Pro</h1><p>Frontend not found.</p>", status_code=404)
     return FileResponse(str(index_file))
-
-
-@app.get("/app.js")
-def serve_app_js():
-    js_file = FRONTEND_DIR / "app.js"
-    if not js_file.exists():
-        raise HTTPException(status_code=404, detail="app.js not found")
-    return FileResponse(str(js_file), media_type="application/javascript")

@@ -37,13 +37,17 @@ def get_auth_headers(client: TestClient) -> dict:
 
 
 def test_frontend_serving(client: TestClient):
+    import re
+
     res_html = client.get("/")
     assert res_html.status_code == 200
     assert "QueueFlow Pro" in res_html.text
 
-    res_js = client.get("/app.js")
+    match = re.search(r'src="(/assets/[^"]+\.js)"', res_html.text)
+    assert match, "Expected Vite-built JS asset tag in index.html"
+    res_js = client.get(match.group(1))
     assert res_js.status_code == 200
-    assert "performLogin" in res_js.text
+    assert "QueueFlow" in res_js.text
 
 
 def test_authentication_and_demo_seed(client: TestClient):
