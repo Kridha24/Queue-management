@@ -97,7 +97,7 @@ export default function App() {
     if (!session?.token) return;
     try {
       const data = await apiRequest("/api/queues", {}, session.token, handleUnauthorized);
-      const list = data.queues || [];
+      const list = Array.isArray(data) ? data : data.queues || [];
       setQueues(list);
       setActiveQueueId((prev) => {
         if (prev && list.some((q) => q.id === prev)) return prev;
@@ -169,9 +169,10 @@ export default function App() {
       );
       setQueueModalOpen(false);
       setQueueToEdit(null);
-      if (res?.queue?.id) {
-        setActiveQueueId(res.queue.id);
-        localStorage.setItem(STORAGE_KEYS.ACTIVE_QUEUE_ID, String(res.queue.id));
+      const savedQueueId = res?.queue?.id || res?.id;
+      if (savedQueueId) {
+        setActiveQueueId(savedQueueId);
+        localStorage.setItem(STORAGE_KEYS.ACTIVE_QUEUE_ID, String(savedQueueId));
       }
       await loadQueues();
       showToast(editId ? "Queue updated." : `Queue "${payload.name}" created!`);
@@ -376,3 +377,4 @@ export default function App() {
     </div>
   );
 }
+

@@ -1,75 +1,110 @@
-# QueueFlow Pro — Full-Stack Queue Management & Analytics
+# QueueFlow Pro — Command Center
 
-QueueFlow Pro is a production-ready full-stack queue management web application built with **Python FastAPI**, **SQLite**, **Tailwind CSS**, and **Chart.js**. It supports multi-queue operations, automatic sequential token generation, live queue reordering, one-click service dispatch, in-page cancellation workflows, and real-time SLA analytics.
+Production-grade Full-Stack Queue Management Application built with **React (Vite) + Tailwind CSS + Lucide Icons + Recharts** on the frontend and a **4-layer HLD/LLD FastAPI** backend supporting **PostgreSQL (`DATABASE_URL`)** and **SQLite** (with automatic `/tmp/queueflow.db` fallback on Vercel).
 
-## Features
+---
 
-1. **Queue Manager Authentication**: Email/password login with PBKDF2-hashed credentials, session persistence, one-click **Instant Demo Login** (`manager@queueflow.io` / `manager123`), and logout.
-2. **Named Queue Creation & Management**: Create and edit multiple queues with custom Name, Token Prefix (e.g., `OPD`, `PHM`, `LAB`), Service Counter label, and Target SLA (mins/token).
-3. **Automatic Token Issuance**: Issue tokens with Person Name, optional Phone/Contact, Priority (`Standard`, `Priority`, `Follow-up`), and Service Notes. Generates sequential codes (`OPD-101`, `OPD-102`, ...) with arrival timestamps.
-4. **Live Waiting Queue & Service Banner**: Ordered waiting list (`#1`, `#2`, `#3`...) with live wait duration, estimated time to service, search/filter box, a **Currently In Service** banner, and a **Recent Service & Cancellation History** log.
-5. **Queue Reordering**: Swap waiting tokens **↑ Up** and **↓ Down** with boundary guards at `#1` and the last position.
-6. **One-Click Service Dispatch**: **Assign Top Token for Service** transitions `#1` to `IN_SERVICE`, records actual wait duration, marks any previously active token as `SERVED`, and advances remaining positions. Includes **Mark Service Complete**.
-7. **In-Page Token Cancellation**: Clean confirmation modal with optional cancellation reason, logging cancelled tokens in history and re-indexing remaining positions.
-8. **Analytics Dashboard**: Queue scope filter (`All Queues Combined` or per-queue), 4 KPI cards (Mean Wait Time, Active Queue Depth, Service Throughput, Cancellation Rate), 3 responsive Chart.js visualizations (Hourly Trend, Avg Wait vs. Target SLA, Token Lifecycle Breakdown), and a Per-Queue Operational Breakdown table.
-9. **Offline / Standalone Resilience**: Syncs with the FastAPI + SQLite backend when running on a server and gracefully falls back to `localStorage` if `frontend/index.html` is opened directly.
-
-## Project Structure
+## High-Level Design (HLD)
 
 ```text
-.
-├── backend/
-│   ├── app.py               # FastAPI application, SQLite schema, demo seed & REST API
-│   └── requirements.txt     # Python dependencies
-├── frontend/
-│   ├── index.html           # Responsive UI (Tailwind CSS + Chart.js)
-│   └── app.js               # Frontend state, API client, localStorage fallback & charts
-├── tests/
-│   └── test_e2e.py          # Automated end-to-end pytest suite
-├── .gitignore
-└── README.md
++-------------------------------------------------------------------+
+|  React 18 + Vite + Tailwind CSS + Lucide + Recharts (frontend/)   |
+|  - Dark-Rail Bento Workspace, Analytics, Dedicated Settings Tab   |
++---------------------------------+---------------------------------+
+                                  | HTTPS / Stateless JWT Bearer
+                                  v
++-------------------------------------------------------------------+
+|  Stateless FastAPI API Tier (backend/main.py)                     |
+|  - Security Headers, CORS, Global Exception Handlers, Rate Limit  |
++----------------+--------------------------------+-----------------+
+                 |                                |
+                 v                                v
++--------------------------------+   +------------------------------+
+|  PostgreSQL / SQLite           |   |  Redis (Optional Cache/RL)   |
+|  - Composite Index:            |   |  - Auth Rate Limiting        |
+|    tokens(queue_id, status,    |   |  - Analytics 15s Cache       |
+|           position)            |   |  - In-memory fallback        |
+|  - AES-256-GCM PII Encryption  |   +------------------------------+
++--------------------------------+
 ```
 
-## Quick Start
+---
 
-### 1. Create a Virtual Environment & Install Dependencies
+## Low-Level Design (LLD) — 4-Layer Backend Architecture
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r backend/requirements.txt
+```text
+backend/
+├── main.py                  # FastAPI entrypoint, CORS, security headers, global exception handlers
+├── app.py                   # Compatibility shim re-exporting app & core helpers
+├── core/
+│   ├── config.py            # Environment settings, DB path, JWT secret, Vercel /tmp detection
+│   ├── database.py          # Atomic transaction context manager, schema & composite indexes
+│   └── security.py          # PBKDF2 password hashing, stateless HS256 JWT, AES-256-GCM, rate limit
+├── schemas/                 # Pydantic request/response DTOs
+│   ├── auth.py
+│   ├── queue.py
+│   └── token.py
+├── repositories/            # Pure SQL data-access layer (zero business logic)
+│   ├── manager_repo.py
+│   ├── queue_repo.py
+│   └── token_repo.py
+├── services/                # Business logic (strict token state machine, atomic swaps, SLA math)
+│   ├── auth_service.py
+│   ├── queue_service.py
+│   └── analytics_service.py
+└── routers/                 # Thin HTTP controllers
+    ├── auth_router.py
+    ├── queue_router.py
+    └── analytics_router.py
 ```
 
-### 2. Run the Application
+### Strict Token State Machine
+- `WAITING -> IN_SERVICE -> SERVED`
+- `WAITING -> CANCELLED`
+- Invalid transitions return HTTP `400` with structured JSON (`{ "error": "...", "code": "INVALID_STATE_TRANSITION" }`).
 
-```bash
-uvicorn backend.app:app --reload --port 8000
-```
+---
 
-Open **[http://localhost:8000](http://localhost:8000)** in your browser and click **Instant Demo Login** (or sign in with `manager@queueflow.io` / `manager123`).
-
-### 3. Run Automated Tests
-
-```bash
-pytest -v tests/test_e2e.py
-```
-
-## REST API Reference
-
-All endpoints except `/api/health`, `/api/auth/login`, `/`, and `/app.js` require a `Bearer <token>` header returned by `/api/auth/login`.
+## Core API Endpoints
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `POST` | `/api/auth/login` | Authenticate manager and issue session token |
-| `POST` | `/api/auth/logout` | Invalidate current session token |
-| `GET` | `/api/auth/me` | Get authenticated manager profile |
+| `GET` | `/api/health` | Health & infrastructure status (DB, Redis, AES-256-GCM, Instance ID) |
+| `POST` | `/api/auth/login` | Stateless JWT login (`manager@queueflow.io` / `manager123`) |
+| `POST` | `/api/auth/google` | Google OAuth Sign-In verification |
 | `GET` | `/api/queues` | List all queues with waiting, in-service, and history tokens |
-| `POST` | `/api/queues` | Create a new service queue |
-| `PATCH` | `/api/queues/{queue_id}` | Update queue settings (name, prefix, counter, SLA) |
-| `POST` | `/api/queues/{queue_id}/tokens` | Issue a new sequential waiting token |
-| `PATCH` | `/api/queues/{queue_id}/tokens/{token_id}/move` | Move a waiting token `up` or `down` |
-| `POST` | `/api/queues/{queue_id}/assign-top` | Assign `#1` waiting token to `IN_SERVICE` |
-| `POST` | `/api/queues/{queue_id}/complete-service` | Mark active `IN_SERVICE` token as `SERVED` |
+| `POST` | `/api/queues` | Create a named queue (`name`, `prefix`, `counter_label`, `sla_minutes`) |
+| `PATCH` | `/api/queues/{queue_id}` | Update queue settings |
+| `POST` | `/api/queues/{queue_id}/tokens` | Issue next sequential token (`OPD-101`, `OPD-102`) |
+| `PATCH` | `/api/queues/{queue_id}/tokens/{token_id}/move` | Atomically move token `up` or `down` |
+| `POST` | `/api/queues/{queue_id}/assign-top` | Atomically assign `#1` token to service |
+| `POST` | `/api/queues/{queue_id}/complete-service` | Mark active token as `SERVED` |
 | `DELETE` | `/api/queues/{queue_id}/tokens/{token_id}` | Cancel a waiting token with optional reason |
-| `GET` | `/api/analytics?queue_id=all` | Compute KPIs, hourly trends, SLA comparison & breakdown |
-| `POST` | `/api/reset-demo` | Restore default 3 sample queues and demo tokens |
+| `GET` | `/api/analytics` | Zero-division-safe KPIs, hourly trend, SLA comparison, lifecycle |
+
+---
+
+## Local & Deployment Setup
+
+### 1. Run Locally
+```bash
+# Backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn backend.main:app --reload --port 8000
+
+# Frontend (optional dev server with /api proxy)
+cd frontend && npm install && npm run dev
+# Build production bundle served by FastAPI
+npm run build
+```
+
+### 2. Run Automated Tests
+```bash
+.venv/bin/pytest -v tests/
+```
+
+### 3. Deploy (Vercel & Render)
+- **Vercel**: `vercel.json` routes all requests to `api/index.py`, and `VERCEL=1` automatically switches SQLite to `/tmp/queueflow.db`.
+- **Render**: `render.yaml` deploys the Python web service with managed PostgreSQL (`DATABASE_URL`), Redis (`REDIS_URL`), and auto-generated `AES_ENCRYPTION_KEY`.
